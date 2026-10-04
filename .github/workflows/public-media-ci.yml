@@ -1,0 +1,75 @@
+name: Public Media CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ideas/**'
+      - 'scripts/**'
+      - 'assets/**'
+      - 'audio/**'
+      - 'images/**'
+      - 'designs/**'
+      - 'videos/**'
+      - 'publishing/**'
+      - '.github/workflows/public-media-ci.yml'
+  pull_request:
+    paths:
+      - 'ideas/**'
+      - 'scripts/**'
+      - 'assets/**'
+      - 'audio/**'
+      - 'images/**'
+      - 'designs/**'
+      - 'videos/**'
+      - 'publishing/**'
+      - '.github/workflows/public-media-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  media-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate public media tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Public media CI: validating assets without secrets."
+          for d in ideas scripts assets audio images designs videos publishing; do
+            if [ -d "$d" ]; then
+              echo "OK: $d/"
+            fi
+          done
+          if find . -type f \( -name '*.env' -o -name '*.pem' -o -name '*.key' \) -not -path './.git/*' | grep -q .; then
+            echo "ERROR: possible secret/key file found in public repository."
+            exit 1
+          fi
+
+      - name: Install media validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick
+
+      - name: Validate audio/video files
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=()
+          while IFS= read -r -d '' f; do files+=("$f"); done < <(find audio videos assets -type f \( -iname '*.mp3' -o -iname '*.wav' -o -iname '*.m4a' -o -iname '*.aac' -o -iname '*.mp4' -o -iname '*.mov' -o -iname '*.webm' \) -print0 2>/dev/null || true)
+          for f in "${files[@]}"; do
+            ffprobe -v error -show_entries format=duration -show_entries stream=codec_name -of default=noprint_wrappers=1 "$f" >/dev/null
+            echo "VALID: $f"
+          done
+
+      - name: Validate image/design files
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            identify "$f" >/dev/null
+            echo "VALID: $f"
+          done < <(find images designs assets -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' -o -iname '*.gif' \) -print0 2>/dev/null || true)
