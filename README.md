@@ -10,3 +10,7 @@
 5. Publishing packages
 
 > لا نضع أي مفاتيح API أو كلمات مرور أو بيانات سرية هنا.
+
+## الحوكمة
+
+قاعدة التكلفة الصفرية إلزامية: `docs/FREE_PRODUCTION_POLICY.md`.
