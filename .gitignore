@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.DS_Store
+production/*/audio/*
+production/*/images/*
+production/*/designs/*
+production/*/video/*
+production/*/thumbnail/*
