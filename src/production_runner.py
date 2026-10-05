@@ -20,8 +20,9 @@ class ProductionRunner:
             raise ValueError(";".join(errors))
 
         task_id = str(manifest["task_id"])
+        # This runner prepares the durable job envelope. Actual media generation
+        # is a separate stage owned by MediaPipeline.
         job = ProductionJob(task_id)
-        job.transition("producing")
         job_root = self.root / task_id
 
         for name in ("audio", "images", "designs", "video", "thumbnail"):
@@ -40,7 +41,7 @@ class ProductionRunner:
 
         return {
             "task_id": task_id,
-            "production_status": "producing",
+            "production_status": "prepared",
             "job_path": str(job_root),
             "job_state": job.to_dict(),
             "artifact_directories": [str(job_root / name) for name in (
