@@ -63,7 +63,7 @@ class ProductionJob:
         self.error = error
         self.updated_at = utc_now()
 
-    def to_dict(self) -> dict[str, Any]:
+    @classmethod\n    def from_dict(cls, data: dict[str, Any]) -> "ProductionJob":\n        return cls(\n            task_id=str(data["task_id"]),\n            status=str(data.get("status", "queued")),\n            attempts=int(data.get("attempts", 0)),\n            max_attempts=int(data.get("max_attempts", 2)),\n            created_at=str(data.get("created_at", "")),\n            updated_at=str(data.get("updated_at", "")),\n            error=data.get("error"),\n        )\n\n    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "status": self.status,
