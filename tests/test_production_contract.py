@@ -13,7 +13,7 @@ def valid_contract():
         },
         "inputs": {"script": "Teach a crochet technique."},
         "scene_plan": [],
-        "validation_requirements": {"require_media": True},
+        "validation_requirements": ["required_artifact_directories", "media_presence"],
     }
 
 
