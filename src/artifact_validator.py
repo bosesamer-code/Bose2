@@ -7,33 +7,30 @@ from typing import Any
 
 
 REQUIRED_ARTIFACT_DIRS = ("audio", "images", "designs", "video", "thumbnail")
+REQUIRED_MEDIA_TYPES = ("audio", "images", "designs", "video", "thumbnail")
 
 
 class ArtifactValidator:
     def validate(self, job_root: Path, *, require_media: bool = False) -> dict[str, Any]:
-        missing = [
-            name for name in REQUIRED_ARTIFACT_DIRS
-            if not (job_root / name).is_dir()
-        ]
-
+        missing = [name for name in REQUIRED_ARTIFACT_DIRS if not (job_root / name).is_dir()]
         files = {
             name: sorted(str(path.relative_to(job_root)) for path in (job_root / name).glob("**/*") if path.is_file())
             for name in REQUIRED_ARTIFACT_DIRS
             if (job_root / name).is_dir()
         }
-
-        media_present = any(files.get(name) for name in REQUIRED_ARTIFACT_DIRS)
-        if require_media and not media_present:
+        empty_media_dirs = [name for name in REQUIRED_MEDIA_TYPES if not files.get(name)]
+        if require_media and empty_media_dirs:
             return {
                 "status": "failed",
-                "reason": "no_media_artifacts",
+                "reason": "missing_media_artifacts",
                 "missing_directories": missing,
+                "empty_media_directories": empty_media_dirs,
                 "files": files,
             }
-
         return {
             "status": "valid" if not missing else "incomplete",
             "reason": None if not missing else "missing_artifact_directories",
             "missing_directories": missing,
+            "empty_media_directories": empty_media_dirs,
             "files": files,
         }
