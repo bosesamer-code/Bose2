@@ -6,19 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-
-STATUSES = {
-    "queued",
-    "producing",
-    "validating",
-    "ready",
-    "failed",
-    "blocked",
-    "rolled_back",
-}
+STATUSES = {"queued", "producing", "validating", "ready", "failed", "blocked", "rolled_back"}
 
 TRANSITIONS = {
-    "queued": {"producing", "blocked", "queued"},
+    "queued": {"producing", "blocked"},
     "producing": {"validating", "failed", "blocked"},
     "validating": {"ready", "failed", "blocked"},
     "ready": set(),
@@ -53,17 +44,30 @@ class ProductionJob:
     def transition(self, new_status: str, error: str | None = None) -> None:
         if new_status not in STATUSES:
             raise ValueError(f"invalid status: {new_status}")
-        if new_status not in TRANSITIONS[self.status]:
-            raise ValueError(f"invalid transition: {self.status} -> {new_status}")
         if new_status == "queued":
             if self.attempts >= self.max_attempts:
                 raise ValueError("retry_limit_reached")
+        if new_status not in TRANSITIONS[self.status]:
+            raise ValueError(f"invalid transition: {self.status} -> {new_status}")
+        if new_status == "queued":
             self.attempts += 1
         self.status = new_status
         self.error = error
         self.updated_at = utc_now()
 
-    @classmethod\n    def from_dict(cls, data: dict[str, Any]) -> "ProductionJob":\n        return cls(\n            task_id=str(data["task_id"]),\n            status=str(data.get("status", "queued")),\n            attempts=int(data.get("attempts", 0)),\n            max_attempts=int(data.get("max_attempts", 2)),\n            created_at=str(data.get("created_at", "")),\n            updated_at=str(data.get("updated_at", "")),\n            error=data.get("error"),\n        )\n\n    def to_dict(self) -> dict[str, Any]:
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ProductionJob":
+        return cls(
+            task_id=str(data["task_id"]),
+            status=str(data.get("status", "queued")),
+            attempts=int(data.get("attempts", 0)),
+            max_attempts=int(data.get("max_attempts", 2)),
+            created_at=str(data.get("created_at", "")),
+            updated_at=str(data.get("updated_at", "")),
+            error=data.get("error"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "status": self.status,
