@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from free_production import run_free_production
-from production_runner import ProductionRunner
-from publishing_gate import PublishingGate
+from src.free_production import run_free_production
+from src.production_runner import ProductionRunner
+from src.publishing_gate import PublishingGate
 
 
 def run_free_factory(manifest: dict[str, Any], root: Path) -> dict[str, Any]:
