@@ -10,7 +10,7 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from media_providers import MediaRequest, MediaResult
+from src.media_providers import MediaRequest, MediaResult
 
 
 class FreeLocalAudioProvider:
@@ -90,7 +90,7 @@ class FreeLocalVideoProvider:
 
 
 def free_local_registry():
-    from media_providers import ProviderRegistry
+    from src.media_providers import ProviderRegistry
     registry = ProviderRegistry()
     registry.register(FreeLocalAudioProvider())
     registry.register(FreeLocalImageProvider())
