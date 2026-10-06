@@ -20,8 +20,12 @@ def _persist(job: ProductionJob, state_path: Path) -> None:
 
 
 def run_free_production(task_id: str, job_root: Path, inputs: dict[str, Any]) -> dict[str, Any]:
+    job_root.mkdir(parents=True, exist_ok=True)
     state_path = job_root / "job_state.json"
-    job = ProductionJob.from_dict(json.loads(state_path.read_text(encoding="utf-8")))
+    if state_path.exists():
+        job = ProductionJob.from_dict(json.loads(state_path.read_text(encoding="utf-8")))
+    else:
+        job = ProductionJob(task_id)
     job.transition("producing")
     _persist(job, state_path)
 
