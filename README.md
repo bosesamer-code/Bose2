@@ -7,9 +7,19 @@
 2. Scripts
 3. Visual assets
 4. Videos
-5. Publishing packages
+5. Validation
+6. Human publishing gate
+7. Publishing packages
+
+## التشغيل المجاني
+
+يوجد مسار إنتاج محلي بلا اشتراكات أو مفاتيح API في `src/free_production.py`، ويستخدم مزودات مجانية محلية. المسار الافتراضي يبقى آمنًا إذا لم تتوفر مزودات خارجية.
 
 > لا نضع أي مفاتيح API أو كلمات مرور أو بيانات سرية هنا.
+
+## بوابة النشر
+
+النشر الخارجي لا يُسمح به إلا بعد اجتياز التحقق من الـ artifacts وموافقة بشرية صريحة عبر `src/publishing_gate.py`.
 
 ## الحوكمة
 
