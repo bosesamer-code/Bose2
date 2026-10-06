@@ -6,7 +6,7 @@ from src.artifact_validator import ArtifactValidator
 
 
 def _make_ppm(path: Path) -> None:
-    path.write_bytes(b"P6\\n2 2\\n255\\n" + b"\\x00\\x00\\x00" * 4)
+    path.write_bytes(b"P6\n2 2\n255\n" + b"\x00\x00\x00" * 4)
 
 
 def _make_wav(path: Path) -> None:
@@ -14,7 +14,7 @@ def _make_wav(path: Path) -> None:
         handle.setnchannels(1)
         handle.setsampwidth(2)
         handle.setframerate(8000)
-        handle.writeframes(b"\\x00\\x00" * 800)
+        handle.writeframes(b"\x00\x00" * 800)
 
 
 def _make_mp4(path: Path, image: Path, audio: Path) -> None:
@@ -28,6 +28,7 @@ def _make_mp4(path: Path, image: Path, audio: Path) -> None:
         capture_output=True,
         text=True,
         check=False,
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
 
@@ -45,7 +46,7 @@ def test_media_required_fails_without_media(tmp_path: Path):
     result = ArtifactValidator().validate(tmp_path, require_media=True)
     assert result["status"] == "failed"
     assert result["reason"] == "invalid_or_missing_media_artifacts"
-    assert len(result["empty_media_directories"]) == 5
+    assert len(result["empty_media_dirs"]) == 5
 
 
 def test_fake_media_is_rejected(tmp_path: Path):
@@ -77,4 +78,4 @@ def test_media_required_accepts_real_artifact_set(tmp_path: Path):
     result = ArtifactValidator().validate(tmp_path, require_media=True)
     assert result["status"] == "valid"
     assert result["invalid_media_files"] == {}
-    assert result["empty_media_directories"] == []
+    assert result["empty_media_dirs"] == []
