@@ -83,7 +83,15 @@ class FreeLocalVideoProvider:
             return MediaResult(self.name, self.media_type, "waiting_for_inputs", [], "image_path and audio_path are required")
         command = [ffmpeg, "-y", "-loop", "1", "-i", str(image), "-i", str(audio), "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(output)]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 30 seconds")
         except (OSError, subprocess.CalledProcessError) as exc:
             return MediaResult(self.name, self.media_type, "failed", [], str(exc))
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
