@@ -62,6 +62,17 @@ def validate_contract(contract: dict[str, Any]) -> tuple[bool, list[str]]:
     if permissions.get("access_private_core") is not False:
         errors.append("private_core_access_must_be_false")
 
+    inputs = contract.get("inputs", {})
+    if not isinstance(inputs, dict):
+        errors.append("inputs_must_be_object")
+    elif not str(inputs.get("script", "")).strip():
+        errors.append("script_is_required")
+
+    if not isinstance(contract.get("scene_plan"), list):
+        errors.append("scene_plan_must_be_list")
+    if not isinstance(contract.get("validation_requirements"), list):
+        errors.append("validation_requirements_must_be_list")
+
     if _contains_forbidden(contract):
         errors.append("forbidden_secret_or_private_data")
 
