@@ -18,7 +18,7 @@ STATUSES = {
 }
 
 TRANSITIONS = {
-    "queued": {"producing", "blocked"},
+    "queued": {"producing", "blocked", "queued"},
     "producing": {"validating", "failed", "blocked"},
     "validating": {"ready", "failed", "blocked"},
     "ready": set(),
