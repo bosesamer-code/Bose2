@@ -81,4 +81,3 @@ class ArtifactValidator:
             "invalid_media_files": invalid_media,
             "files": files,
         }
-"
