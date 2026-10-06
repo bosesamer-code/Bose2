@@ -26,12 +26,25 @@ def run_free_production(task_id: str, job_root: Path, inputs: dict[str, Any]) ->
         job = ProductionJob.from_dict(json.loads(state_path.read_text(encoding="utf-8")))
     else:
         job = ProductionJob(task_id)
+    validator = ArtifactValidator()
+    if job.status == "ready":
+        validation = validator.validate(job_root, require_media=True)
+        return {
+            "task_id": job.task_id,
+            "status": "completed" if validation["status"] == "valid" else "waiting_for_providers",
+            "providers": [],
+            "validation": validation,
+            "publish_ready": validation["status"] == "valid",
+            "job_state": job.to_dict(),
+        }
+    if job.status == "failed":
+        job.transition("queued")
     job.transition("producing")
     _persist(job, state_path)
 
     pipeline = MediaPipeline(free_local_registry())
     result = pipeline.run(task_id, job_root, inputs)
-    validation = ArtifactValidator().validate(job_root, require_media=True)
+    validation = validator.validate(job_root, require_media=True)
     result["validation"] = validation
     result["publish_ready"] = (
         result["status"] == "completed" and validation["status"] == "valid"
