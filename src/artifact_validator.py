@@ -21,10 +21,10 @@ ALLOWED_EXTENSIONS = {
 def _valid_image(path: Path) -> bool:
     try:
         with path.open("rb") as handle:
-            header = handle.read(2)
+            header = handle.read(12)
         if path.suffix.lower() == ".ppm":
-            return header in {b"P3", b"P6"}
-        return header == b"\\x89P" or header == b"\\xff\\xd8" or header == b"RI"
+            return header.startswith(b"P3") or header.startswith(b"P6")
+        return (header.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or header.startswith(b"\\xff\\xd8") or header.startswith(b"RIFF") and header[8:12] == b"WEBP")
     except OSError:
         return False
 
