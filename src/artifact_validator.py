@@ -24,7 +24,13 @@ def _valid_image(path: Path) -> bool:
             header = handle.read(12)
         if path.suffix.lower() == ".ppm":
             return header.startswith(b"P3") or header.startswith(b"P6")
-        return (header.startswith(b"\\x89PNG\\r\\n\\x1a\\n") or header.startswith(b"\\xff\\xd8") or header.startswith(b"RIFF") and header[8:12] == b"WEBP")
+        if path.suffix.lower() == ".png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        if path.suffix.lower() in {".jpg", ".jpeg"}:
+            return header.startswith(b"\xff\xd8")
+        if path.suffix.lower() == ".webp":
+            return header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+        return False
     except OSError:
         return False
 
@@ -35,7 +41,16 @@ def _probe_media(path: Path) -> bool:
         return False
     try:
         result = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -50,7 +65,11 @@ class ArtifactValidator:
     def validate(self, job_root: Path, *, require_media: bool = False) -> dict[str, Any]:
         missing = [name for name in REQUIRED_ARTIFACT_DIRS if not (job_root / name).is_dir()]
         files = {
-            name: sorted(str(path.relative_to(job_root)) for path in (job_root / name).glob("**/*") if path.is_file())
+            name: sorted(
+                str(path.relative_to(job_root))
+                for path in (job_root / name).glob("**/*")
+                if path.is_file()
+            )
             for name in REQUIRED_ARTIFACT_DIRS
             if (job_root / name).is_dir()
         }
@@ -63,7 +82,11 @@ class ArtifactValidator:
                 if path.stat().st_size == 0 or not valid_extension:
                     invalid_media.setdefault(name, []).append(relative)
                     continue
-                valid = _valid_image(path) if name in {"images", "designs", "thumbnail"} else _probe_media(path)
+                valid = (
+                    _valid_image(path)
+                    if name in {"images", "designs", "thumbnail"}
+                    else _probe_media(path)
+                )
                 if not valid:
                     invalid_media.setdefault(name, []).append(relative)
 
