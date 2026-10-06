@@ -16,6 +16,7 @@ class MediaPipeline:
 
     def run(self, task_id: str, job_root: Path, inputs: dict[str, Any]) -> dict[str, Any]:
         results: list[dict[str, Any]] = []
+        payload = dict(inputs)
 
         for media_type in self.MEDIA_TYPES:
             provider = self.registry.get(media_type)
@@ -23,7 +24,7 @@ class MediaPipeline:
                 MediaRequest(
                     task_id=task_id,
                     output_dir=job_root / self._directory(media_type),
-                    payload=inputs,
+                    payload=payload,
                 )
             )
             results.append(
@@ -35,6 +36,8 @@ class MediaPipeline:
                     "error": result.error,
                 }
             )
+            if result.artifacts:
+                payload[f"{media_type}_path"] = result.artifacts[0]
 
         ready = all(item["status"] == "completed" for item in results)
         return {
