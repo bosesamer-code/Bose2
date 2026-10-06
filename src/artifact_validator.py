@@ -41,20 +41,9 @@ def _probe_media(path: Path) -> bool:
         return False
     try:
         result = subprocess.run(
-            [
-                ffprobe,
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, check=False, timeout=15,
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -67,19 +56,16 @@ class ArtifactValidator:
         files = {
             name: sorted(
                 str(path.relative_to(job_root))
-                for path in (job_root / name).glob("**/*")
-                if path.is_file()
+                for path in (job_root / name).glob("**/*") if path.is_file()
             )
-            for name in REQUIRED_ARTIFACT_DIRS
-            if (job_root / name).is_dir()
+            for name in REQUIRED_ARTIFACT_DIRS if (job_root / name).is_dir()
         }
         empty_media_dirs = [name for name in REQUIRED_MEDIA_TYPES if not files.get(name)]
         invalid_media: dict[str, list[str]] = {}
         for name in REQUIRED_MEDIA_TYPES:
             for relative in files.get(name, []):
                 path = job_root / relative
-                valid_extension = path.suffix.lower() in ALLOWED_EXTENSIONS[name]
-                if path.stat().st_size == 0 or not valid_extension:
+                if path.stat().st_size == 0 or path.suffix.lower() not in ALLOWED_EXTENSIONS[name]:
                     invalid_media.setdefault(name, []).append(relative)
                     continue
                 valid = (
@@ -91,16 +77,19 @@ class ArtifactValidator:
                     invalid_media.setdefault(name, []).append(relative)
 
         failed = bool(missing or empty_media_dirs or invalid_media)
-        if require_media and failed:
-            status, reason = "failed", "invalid_or_missing_media_artifacts"
-        else:
-            status = "incomplete" if missing or invalid_media else "valid"
-            reason = None if status == "valid" else "invalid_or_missing_artifacts"
+        status = "failed" if require_media and failed else (
+            "incomplete" if missing or invalid_media else "valid"
+        )
+        reason = None if status == "valid" else (
+            "invalid_or_missing_media_artifacts" if require_media
+            else "invalid_or_missing_artifacts"
+        )
         return {
             "status": status,
             "reason": reason,
             "missing_directories": missing,
             "empty_media_directories": empty_media_dirs,
+            "empty_media_dirs": empty_media_dirs,
             "invalid_media_files": invalid_media,
             "files": files,
         }
