@@ -7,7 +7,7 @@ def complete_job(root: Path) -> None:
     for name in ("audio", "images", "designs", "video", "thumbnail"):
         directory = root / name
         directory.mkdir()
-        (directory / "artifact.bin").write_bytes(b"ok")
+        (directory / {"audio": "voice.wav", "images": "scene.ppm", "designs": "design.ppm", "video": "video.mp4", "thumbnail": "thumb.ppm"}[name]).write_bytes(b"ok")
 
 
 def test_publishing_is_blocked_without_human_approval(tmp_path: Path):
