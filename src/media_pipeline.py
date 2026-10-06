@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from media_providers import MediaRequest, ProviderRegistry, default_registry
+from src.media_providers import MediaRequest, ProviderRegistry, default_registry
 
 
 class MediaPipeline:
