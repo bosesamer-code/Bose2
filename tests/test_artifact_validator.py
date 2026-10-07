@@ -79,3 +79,15 @@ def test_media_required_accepts_real_artifact_set(tmp_path: Path):
     assert result["status"] == "valid"
     assert result["invalid_media_files"] == {}
     assert result["empty_media_dirs"] == []
+
+
+def test_validator_ignores_video_helper_files(tmp_path: Path):
+    for name in ("audio", "images", "designs", "video", "thumbnail"):
+        (tmp_path / name).mkdir(parents=True)
+    (tmp_path / "audio" / "voice.wav").write_bytes(b"RIFF" + b"0" * 100)
+    (tmp_path / "images" / "scene.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+    (tmp_path / "designs" / "design.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+    (tmp_path / "thumbnail" / "thumb.ppm").write_bytes(b"P6\n1 1\n255\n\x00\x00\x00")
+    (tmp_path / "video" / "scenes.txt").write_text("ffmpeg helper", encoding="utf-8")
+    result = ArtifactValidator().validate(tmp_path, require_media=True)
+    assert "video/scenes.txt" not in result["invalid_media_files"].get("video", [])
