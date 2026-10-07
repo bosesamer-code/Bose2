@@ -37,7 +37,11 @@ class MediaPipeline:
                 }
             )
             if result.artifacts:
-                payload[f"{media_type}_path"] = result.artifacts[0]
+                if media_type == "image":
+                    payload["image_paths"] = result.artifacts
+                    payload["image_path"] = result.artifacts[0]
+                else:
+                    payload[f"{media_type}_path"] = result.artifacts[0]
 
         ready = all(item["status"] == "completed" for item in results)
         return {
