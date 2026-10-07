@@ -24,3 +24,33 @@ def test_content_engine_rejects_unknown_topic():
         assert str(exc) == "unknown_topic:does_not_exist"
     else:
         raise AssertionError("unknown topic must fail")
+
+
+def test_content_engine_rejects_invalid_scene_sequence():
+    catalog = load_catalog(Path("content/content_catalog.json"))
+    lesson = generate_lesson(catalog, "crochet_basics", 0)
+    lesson["scenes"][1]["purpose"] = "cta"
+
+    from src.content_engine import validate_lesson
+
+    try:
+        validate_lesson(lesson)
+    except ValueError as exc:
+        assert str(exc) == "invalid_scene_sequence"
+    else:
+        raise AssertionError("invalid scene sequence must fail")
+
+
+def test_content_engine_rejects_empty_scene_text():
+    catalog = load_catalog(Path("content/content_catalog.json"))
+    lesson = generate_lesson(catalog, "handmade_home", 0)
+    lesson["scenes"][2]["text"] = " "
+
+    from src.content_engine import validate_lesson
+
+    try:
+        validate_lesson(lesson)
+    except ValueError as exc:
+        assert str(exc) == "scene_text_required"
+    else:
+        raise AssertionError("empty scene text must fail")
