@@ -65,7 +65,9 @@ class ArtifactValidator:
         for name in REQUIRED_MEDIA_TYPES:
             for relative in files.get(name, []):
                 path = job_root / relative
-                if path.stat().st_size == 0 or path.suffix.lower() not in ALLOWED_EXTENSIONS[name]:
+                if path.suffix.lower() not in ALLOWED_EXTENSIONS[name]:
+                    continue
+                if path.stat().st_size == 0:
                     invalid_media.setdefault(name, []).append(relative)
                     continue
                 valid = (
