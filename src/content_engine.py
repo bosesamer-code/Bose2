@@ -1,0 +1,86 @@
+"""Deterministic content engine for the handmade production factory."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+
+REQUIRED_RULES = (
+    "one_clear_learning_goal",
+    "include_hook",
+    "include_practical_steps",
+    "include_cta",
+    "avoid_unverified_claims",
+    "keep_content_beginner_friendly",
+)
+
+
+def load_catalog(path: Path) -> dict[str, Any]:
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    if catalog.get("human_approval_required") is not True:
+        raise ValueError("human_approval_required must be true")
+    if catalog.get("automatic_publish") is not False:
+        raise ValueError("automatic_publish must be false")
+    rules = catalog.get("generation_rules", {})
+    missing = [rule for rule in REQUIRED_RULES if rules.get(rule) is not True]
+    if missing:
+        raise ValueError(f"missing_generation_rules:{','.join(missing)}")
+    return catalog
+
+
+def generate_lesson(catalog: dict[str, Any], topic_id: str, idea_index: int = 0) -> dict[str, Any]:
+    topics = {item["topic_id"]: item for item in catalog.get("topics", [])}
+    if topic_id not in topics:
+        raise ValueError(f"unknown_topic:{topic_id}")
+
+    topic = topics[topic_id]
+    ideas = topic.get("ideas", [])
+    if not ideas:
+        raise ValueError(f"topic_has_no_ideas:{topic_id}")
+    if idea_index < 0 or idea_index >= len(ideas):
+        raise ValueError(f"invalid_idea_index:{idea_index}")
+
+    idea = ideas[idea_index]
+    content_id = f"{topic_id}-{idea_index + 1:03d}"
+    scenes = [
+        {"scene": 1, "duration_seconds": 4, "purpose": "hook", "text": idea},
+        {
+            "scene": 2,
+            "duration_seconds": 8,
+            "purpose": "lesson",
+            "text": f"ابدئي بخطوة بسيطة في موضوع {idea}، وحددي الخامات والأدوات قبل التنفيذ.",
+        },
+        {
+            "scene": 3,
+            "duration_seconds": 8,
+            "purpose": "application",
+            "text": "نفذي نموذجًا صغيرًا، سجلي ما نجح، ثم عدلي النتيجة في المحاولة التالية.",
+        },
+        {
+            "scene": 4,
+            "duration_seconds": 4,
+            "purpose": "cta",
+            "text": "تابعي الدروس القادمة لأفكار هاند ميد عملية وبسيطة.",
+        },
+    ]
+
+    return {
+        "content_id": content_id,
+        "language": catalog["language"],
+        "title": idea,
+        "topic": topic["category"],
+        "audience": "beginners",
+        "format": catalog["default_format"],
+        "script": " ".join(scene["text"] for scene in scenes),
+        "scenes": scenes,
+        "visual_style": "clean_handmade_tutorial",
+        "video_format": "mp4_16_9",
+        "publishing": {
+            "facebook": True,
+            "youtube": True,
+            "automatic_publish": False,
+        },
+        "human_approval_required": True,
+    }
