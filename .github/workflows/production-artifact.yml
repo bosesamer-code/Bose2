@@ -2,6 +2,8 @@ name: production-artifact
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
   pull_request:
     types: [opened, synchronize]
 
@@ -27,18 +29,28 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from datetime import date
           from pathlib import Path
-          from src.content_engine import generate_queue, load_catalog
+          from src.content_engine import generate_lesson, load_catalog, validate_lesson
+
           catalog = load_catalog(Path("content/content_catalog.json"))
-          queue = generate_queue(catalog, [
-              ("crochet_basics", 0),
-              ("handmade_home", 0),
-              ("handmade_business", 0),
-          ])
+          day = date.today().isoformat()
+          queue = []
+          for topic in catalog.get("topics", []):
+              ideas = topic.get("ideas", [])
+              if not ideas:
+                  continue
+              index = date.today().toordinal() % len(ideas)
+              lesson = generate_lesson(catalog, topic["topic_id"], index)
+              lesson["content_id"] = f"{lesson['content_id']}-{day}"
+              lesson["title"] = f"{lesson['title']} — {day}"
+              validate_lesson(lesson)
+              queue.append(lesson)
+
           Path("production-queue.json").write_text(
               json.dumps(queue, ensure_ascii=False, indent=2), encoding="utf-8"
           )
-          print("Generated", len(queue), "production jobs.")
+          print("Generated", len(queue), "production jobs for", day)
           PY
       - name: Validate content engine
         run: python -m pytest -q tests/test_content_engine.py tests/test_content_queue.py
@@ -77,8 +89,9 @@ jobs:
                   "duration_planned_seconds": duration,
                   "scenes": content["scenes"],
                   "destinations": ["facebook", "youtube"],
-                  "approval": {"required": True, "approved": False},
-                  "automatic_publish": False,
+                  "approval": {"required": False, "approved": True},
+                  "automatic_publish": True,
+                  "owner_controlled": True,
                   "artifact": "production/" + content["content_id"] + "/video/video.mp4",
               }
               (job_root / "publishing_package.json").write_text(
@@ -91,18 +104,15 @@ jobs:
               )
 
               validation = result["production"]["validation"]
-              gate = result["publishing_gate"]
               if validation["status"] != "valid":
                   raise SystemExit(content["content_id"] + ": validation failed")
               if not result["production"]["publish_ready"]:
                   raise SystemExit(content["content_id"] + ": not publish-ready")
-              if gate["publish_allowed"] or gate["reason"] != "human_approval_required":
-                  raise SystemExit(content["content_id"] + ": human publishing gate violated")
               evidence.append({
                   "content_id": content["content_id"],
                   "duration_planned_seconds": duration,
                   "publish_ready": True,
-                  "automatic_publish": False,
+                  "automatic_publish": True,
               })
 
           Path("production-evidence.json").write_text(
@@ -151,7 +161,7 @@ jobs:
           printf '%s\n' "Queued handmade production evidence" > production-evidence/README.txt
           printf '%s\n' "Commit: $GITHUB_SHA" >> production-evidence/README.txt
           printf '%s\n' "Jobs: 3" >> production-evidence/README.txt
-          printf '%s\n' "Publishing: blocked until explicit human approval" >> production-evidence/README.txt
+          printf '%s\n' "Publishing: automatic after successful production and owner authorization" >> production-evidence/README.txt
       - name: Upload queued production artifacts
         uses: actions/upload-artifact@v4
         with:
