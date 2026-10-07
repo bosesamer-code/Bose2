@@ -80,19 +80,21 @@ class FreeLocalImageProvider:
             number = int(scene.get("scene", len(artifacts) + 1))
             purpose = str(scene.get("purpose", "lesson"))
             output = request.output_dir / f"scene_{number:03d}.ppm"
-            if not output.exists():
-                red, green, blue = self._scene_rgb(number, purpose)
-                with output.open("wb") as fh:
-                    fh.write(f"P6\n{width} {height}\n255\n".encode())
-                    for y in range(height):
-                        for x in range(width):
-                            stripe = ((x // 40) + (y // 40) + number) % 2
-                            factor = 0.82 if stripe else 1.0
-                            fh.write(bytes((
-                                int(red * factor),
-                                int(green * factor),
-                                int(blue * factor),
-                            )))
+            if output.exists():
+                artifacts.append(str(output))
+                continue
+            red, green, blue = self._scene_rgb(number, purpose)
+            with output.open("wb") as fh:
+                fh.write(f"P6\n{width} {height}\n255\n".encode())
+                for y in range(height):
+                    for x in range(width):
+                        stripe = ((x // 40) + (y // 40) + number) % 2
+                        factor = 0.82 if stripe else 1.0
+                        fh.write(bytes((
+                            int(red * factor),
+                            int(green * factor),
+                            int(blue * factor),
+                        )))
             artifacts.append(str(output))
         return MediaResult(self.name, self.media_type, "completed", artifacts)
 
