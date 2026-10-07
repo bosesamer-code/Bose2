@@ -84,3 +84,14 @@ def generate_lesson(catalog: dict[str, Any], topic_id: str, idea_index: int = 0)
         },
         "human_approval_required": True,
     }
+
+
+def generate_queue(
+    catalog: dict[str, Any],
+    selections: list[tuple[str, int]],
+) -> list[dict[str, Any]]:
+    queue = [generate_lesson(catalog, topic_id, index) for topic_id, index in selections]
+    ids = [item["content_id"] for item in queue]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate_content_id")
+    return queue
