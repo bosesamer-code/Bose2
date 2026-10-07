@@ -47,13 +47,7 @@ class FreeLocalAudioProvider:
 
 
 class FreeLocalImageProvider:
-    """Create deterministic educational scene cards using only the Python stdlib.
-
-    The visuals encode the scene's teaching purpose as simple diagrams:
-    hook = focal card, lesson = numbered progression, application = checklist,
-    cta = forward arrow. The scene text remains in narration/metadata so the
-    renderer stays dependency-free and language-agnostic.
-    """
+    """Create deterministic educational diagrams from scene purpose and text."""
 
     name = "free-local-image"
     media_type = "image"
@@ -85,31 +79,42 @@ class FreeLocalImageProvider:
         bg = bytearray(bytes((red, green, blue)) * (width * height))
         dark = (max(25, red - 85), max(25, green - 85), max(25, blue - 85))
         light = (min(255, red + 30), min(255, green + 30), min(255, blue + 30))
+        text = str(scene.get("text", "")).lower()
 
-        # A consistent header band makes the scene cards visually coherent.
         cls._fill_rect(bg, width, height, 0, 0, width, 42, dark)
 
         if purpose == "hook":
-            # One large focal card: "start with one idea".
+            # A focal card for the idea being introduced.
             cls._fill_rect(bg, width, height, 150, 85, 490, 275, light)
             cls._fill_rect(bg, width, height, 205, 125, 435, 235, dark)
             cls._fill_rect(bg, width, height, 235, 155, 405, 205, light)
         elif purpose == "lesson":
-            # Three connected step blocks represent a sequence.
-            for i in range(3):
-                x = 75 + i * 190
-                cls._fill_rect(bg, width, height, x, 105, x + 125, 230, light)
-                cls._fill_rect(bg, width, height, x + 18, 123, x + 107, 141, dark)
-                if i < 2:
-                    cls._fill_rect(bg, width, height, x + 125, 155, x + 190, 180, dark)
+            # "steps / خَطوات / خطوات / ابدئي / قسمي" -> a numbered process.
+            step_words = ("step", "steps", "خطوة", "خطوات", "ابدئي", "قسمي", "أول", "ثاني", "ثالث")
+            count = 4 if any(word in text for word in step_words) else 3
+            gap = 18
+            block_w = (width - 2 * 55 - (count - 1) * gap) // count
+            for i in range(count):
+                x = 55 + i * (block_w + gap)
+                cls._fill_rect(bg, width, height, x, 105, x + block_w, 230, light)
+                cls._fill_rect(bg, width, height, x + 12, 122, x + block_w - 12, 142, dark)
+                if i < count - 1:
+                    cls._fill_rect(bg, width, height, x + block_w, 157, x + block_w + gap, 178, dark)
         elif purpose == "application":
-            # Three checklist rows represent doing, reviewing, improving.
-            for i in range(3):
-                y = 92 + i * 72
-                cls._fill_rect(bg, width, height, 120, y, 155, y + 35, light)
-                cls._fill_rect(bg, width, height, 175, y + 7, 500, y + 28, dark)
+            # "review / improve / model" -> review loop; otherwise checklist.
+            review_words = ("راجع", "راجعي", "تعديل", "تحسين", "حسن", "النموذج", "improv", "review")
+            if any(word in text for word in review_words):
+                cls._fill_rect(bg, width, height, 120, 105, 520, 235, light)
+                cls._fill_rect(bg, width, height, 170, 140, 470, 165, dark)
+                cls._fill_rect(bg, width, height, 170, 178, 405, 203, dark)
+                cls._fill_rect(bg, width, height, 410, 178, 470, 203, light)
+            else:
+                for i in range(3):
+                    y = 92 + i * 72
+                    cls._fill_rect(bg, width, height, 120, y, 155, y + 35, light)
+                    cls._fill_rect(bg, width, height, 175, y + 7, 500, y + 28, dark)
         elif purpose == "cta":
-            # A forward arrow communicates the next step.
+            # Forward arrow = continue to the next lesson/action.
             cls._fill_rect(bg, width, height, 120, 145, 445, 205, light)
             for i in range(7):
                 cls._fill_rect(bg, width, height, 420 + i * 18, 112 + i * 10, 438 + i * 18, 238 - i * 10, light)
@@ -124,7 +129,7 @@ class FreeLocalImageProvider:
         request.output_dir.mkdir(parents=True, exist_ok=True)
         scenes = list(request.payload.get("scene_plan", []))
         if not scenes:
-            scenes = [{"scene": 1, "purpose": "lesson"}]
+            scenes = [{"scene": 1, "purpose": "lesson", "text": ""}]
 
         artifacts = []
         width, height = 640, 360
