@@ -1,0 +1,53 @@
+{
+  "catalog_version": 1,
+  "language": "ar-EG",
+  "default_format": "short_lesson",
+  "human_approval_required": true,
+  "automatic_publish": false,
+  "topics": [
+    {
+      "topic_id": "crochet_basics",
+      "category": "crochet",
+      "ideas": [
+        "أساسيات الكروشيه للمبتدئين",
+        "كيف تختاري أول خيط كروشيه",
+        "أخطاء شائعة في بداية الكروشيه"
+      ]
+    },
+    {
+      "topic_id": "handmade_home",
+      "category": "home_decor",
+      "ideas": [
+        "فكرة مفرش هاند ميد بسيطة",
+        "تحويل بقايا الخامات إلى قطعة ديكور",
+        "فكرة هاند ميد عملية للمنزل"
+      ]
+    },
+    {
+      "topic_id": "handmade_business",
+      "category": "marketing",
+      "ideas": [
+        "كيف تصوري منتج هاند ميد بالموبايل",
+        "كيف تكتبي وصفًا بسيطًا لمنتج هاند ميد",
+        "كيف تحولي فكرة هاند ميد إلى منتج قابل للبيع"
+      ]
+    },
+    {
+      "topic_id": "winter_handmade",
+      "category": "winter",
+      "ideas": [
+        "فكرة قطعة شتوية هاند ميد للمبتدئين",
+        "اختيار الخامات المناسبة للمشغولات الشتوية",
+        "كيف تطوري تصميمًا شتويًا بسيطًا"
+      ]
+    }
+  ],
+  "generation_rules": {
+    "one_clear_learning_goal": true,
+    "include_hook": true,
+    "include_practical_steps": true,
+    "include_cta": true,
+    "avoid_unverified_claims": true,
+    "keep_content_beginner_friendly": true
+  }
+}
