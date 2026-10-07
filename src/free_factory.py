@@ -23,7 +23,11 @@ def _factory_contract(manifest: dict[str, Any]) -> dict[str, Any]:
             "publish": False,
             "access_private_core": False,
         },
-        "inputs": {**dict(manifest.get("inputs", {})), "duration_seconds": duration_seconds},
+        "inputs": {
+            **dict(manifest.get("inputs", {})),
+            "duration_seconds": duration_seconds,
+            "scene_plan": scene_plan,
+        },
         "scene_plan": scene_plan,
         "validation_requirements": [
             "required_artifact_directories",
