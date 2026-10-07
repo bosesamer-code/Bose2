@@ -20,10 +20,28 @@ class ProductionRunner:
             raise ValueError(";".join(errors))
 
         task_id = str(manifest["task_id"])
+        # Reusing a task_id is safe only when the immutable production contract matches.
+        job_root = self.root / task_id
+        manifest_path = job_root / "manifest.json"
+        state_path = job_root / "job_state.json"
+        if manifest_path.exists():
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if existing != manifest:
+                raise ValueError("task_id_conflict")
+            job = ProductionJob.from_dict(json.loads(state_path.read_text(encoding="utf-8")))
+            return {
+                "task_id": task_id,
+                "production_status": "prepared",
+                "job_path": str(job_root),
+                "job_state": job.to_dict(),
+                "artifact_directories": [str(job_root / name) for name in ("audio", "images", "designs", "video", "thumbnail")],
+                "next_step": "run_media_providers",
+                "idempotent_reuse": True,
+            }
+
         # This runner prepares the durable job envelope. Actual media generation
         # is a separate stage owned by MediaPipeline.
         job = ProductionJob(task_id)
-        job_root = self.root / task_id
 
         for name in ("audio", "images", "designs", "video", "thumbnail"):
             (job_root / name).mkdir(parents=True, exist_ok=True)

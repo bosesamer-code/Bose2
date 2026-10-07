@@ -15,3 +15,5 @@ def test_free_factory_stops_at_human_gate(tmp_path: Path):
     assert result["prepared"]["production_status"] == "prepared"
     assert result["publishing_gate"]["publish_allowed"] is False
     assert result["publishing_gate"]["reason"] == "human_approval_required"
+    assert result["production"]["publish_ready"] is True
+    assert result["production"]["job_state"]["status"] == "ready"

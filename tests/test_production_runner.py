@@ -43,3 +43,24 @@ def test_runner_rejects_publish_permission(tmp_path: Path):
         assert "publish_must_be_false" in str(exc)
     else:
         raise AssertionError("publish permission must be rejected")
+
+
+def test_runner_reuses_identical_task_without_resetting_state(tmp_path: Path):
+    first = ProductionRunner(tmp_path).run(manifest())
+    second = ProductionRunner(tmp_path).run(manifest())
+
+    assert second["idempotent_reuse"] is True
+    assert second["job_state"] == first["job_state"]
+
+
+def test_runner_rejects_conflicting_reuse_of_task_id(tmp_path: Path):
+    ProductionRunner(tmp_path).run(manifest())
+    changed = manifest()
+    changed["inputs"]["script"] = "A different script."
+
+    try:
+        ProductionRunner(tmp_path).run(changed)
+    except ValueError as exc:
+        assert str(exc) == "task_id_conflict"
+    else:
+        raise AssertionError("conflicting task_id reuse must be rejected")

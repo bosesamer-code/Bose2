@@ -10,7 +10,7 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from media_providers import MediaRequest, MediaResult
+from src.media_providers import MediaRequest, MediaResult
 
 
 class FreeLocalAudioProvider:
@@ -83,14 +83,22 @@ class FreeLocalVideoProvider:
             return MediaResult(self.name, self.media_type, "waiting_for_inputs", [], "image_path and audio_path are required")
         command = [ffmpeg, "-y", "-loop", "1", "-i", str(image), "-i", str(audio), "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(output)]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 30 seconds")
         except (OSError, subprocess.CalledProcessError) as exc:
             return MediaResult(self.name, self.media_type, "failed", [], str(exc))
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
 def free_local_registry():
-    from media_providers import ProviderRegistry
+    from src.media_providers import ProviderRegistry
     registry = ProviderRegistry()
     registry.register(FreeLocalAudioProvider())
     registry.register(FreeLocalImageProvider())
