@@ -34,7 +34,7 @@ def test_factory_creates_one_visual_per_scene(tmp_path: Path):
     }
 
     result = run_free_factory(manifest, tmp_path)
-    assert result["production"]["validation"]["status"] == "valid", result["production"]["validation"]
+    assert result["production"]["validation"]["status"] == "valid", result["production"]["validation"]["invalid_media_files"]
 
     images = sorted((tmp_path / "factory-scene-001" / "images").glob("scene_*.ppm"))
     assert len(images) == 3
