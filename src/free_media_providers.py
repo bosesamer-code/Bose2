@@ -25,13 +25,7 @@ class FreeLocalAudioProvider:
         script = str(request.payload.get("script", "")).strip()
         espeak = shutil.which("espeak-ng") or shutil.which("espeak")
         if espeak and script:
-            command = [
-                espeak,
-                "-v", "ar",
-                "-s", "150",
-                "-w", str(output),
-                script,
-            ]
+            command = [espeak, "-v", "ar", "-s", "150", "-w", str(output), script]
             try:
                 subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
                 return MediaResult(self.name, self.media_type, "completed", [str(output)])
@@ -53,6 +47,14 @@ class FreeLocalAudioProvider:
 
 
 class FreeLocalImageProvider:
+    """Create deterministic educational scene cards using only the Python stdlib.
+
+    The visuals encode the scene's teaching purpose as simple diagrams:
+    hook = focal card, lesson = numbered progression, application = checklist,
+    cta = forward arrow. The scene text remains in narration/metadata so the
+    renderer stays dependency-free and language-agnostic.
+    """
+
     name = "free-local-image"
     media_type = "image"
 
@@ -67,6 +69,56 @@ class FreeLocalImageProvider:
         base = palette.get(purpose, (180, 180, 180))
         shift = (scene_number * 11) % 24
         return tuple(min(255, channel + shift) for channel in base)
+
+    @staticmethod
+    def _fill_rect(buf: bytearray, width: int, height: int, x0: int, y0: int, x1: int, y1: int, rgb: tuple[int, int, int]) -> None:
+        x0, x1 = max(0, x0), min(width, x1)
+        y0, y1 = max(0, y0), min(height, y1)
+        row = bytes(rgb) * max(0, x1 - x0)
+        for y in range(y0, y1):
+            start = (y * width + x0) * 3
+            buf[start:start + len(row)] = row
+
+    @classmethod
+    def _draw_visual(cls, width: int, height: int, scene_number: int, purpose: str, scene: dict) -> bytes:
+        red, green, blue = cls._scene_rgb(scene_number, purpose)
+        bg = bytearray(bytes((red, green, blue)) * (width * height))
+        dark = (max(25, red - 85), max(25, green - 85), max(25, blue - 85))
+        light = (min(255, red + 30), min(255, green + 30), min(255, blue + 30))
+
+        # A consistent header band makes the scene cards visually coherent.
+        cls._fill_rect(bg, width, height, 0, 0, width, 42, dark)
+
+        if purpose == "hook":
+            # One large focal card: "start with one idea".
+            cls._fill_rect(bg, width, height, 150, 85, 490, 275, light)
+            cls._fill_rect(bg, width, height, 205, 125, 435, 235, dark)
+            cls._fill_rect(bg, width, height, 235, 155, 405, 205, light)
+        elif purpose == "lesson":
+            # Three connected step blocks represent a sequence.
+            for i in range(3):
+                x = 75 + i * 190
+                cls._fill_rect(bg, width, height, x, 105, x + 125, 230, light)
+                cls._fill_rect(bg, width, height, x + 18, 123, x + 107, 141, dark)
+                if i < 2:
+                    cls._fill_rect(bg, width, height, x + 125, 155, x + 190, 180, dark)
+        elif purpose == "application":
+            # Three checklist rows represent doing, reviewing, improving.
+            for i in range(3):
+                y = 92 + i * 72
+                cls._fill_rect(bg, width, height, 120, y, 155, y + 35, light)
+                cls._fill_rect(bg, width, height, 175, y + 7, 500, y + 28, dark)
+        elif purpose == "cta":
+            # A forward arrow communicates the next step.
+            cls._fill_rect(bg, width, height, 120, 145, 445, 205, light)
+            for i in range(7):
+                cls._fill_rect(bg, width, height, 420 + i * 18, 112 + i * 10, 438 + i * 18, 238 - i * 10, light)
+        else:
+            cls._fill_rect(bg, width, height, 150, 100, 490, 260, light)
+
+        # Scene number marker makes sequence/order explicit.
+        cls._fill_rect(bg, width, height, 24, 55, 92, 123, dark)
+        return bytes(bg)
 
     def generate(self, request: MediaRequest) -> MediaResult:
         request.output_dir.mkdir(parents=True, exist_ok=True)
@@ -83,18 +135,10 @@ class FreeLocalImageProvider:
             if output.exists():
                 artifacts.append(str(output))
                 continue
-            red, green, blue = self._scene_rgb(number, purpose)
+            pixels = self._draw_visual(width, height, number, purpose, scene)
             with output.open("wb") as fh:
                 fh.write(f"P6\n{width} {height}\n255\n".encode())
-                for y in range(height):
-                    for x in range(width):
-                        stripe = ((x // 40) + (y // 40) + number) % 2
-                        factor = 0.82 if stripe else 1.0
-                        fh.write(bytes((
-                            int(red * factor),
-                            int(green * factor),
-                            int(blue * factor),
-                        )))
+                fh.write(pixels)
             artifacts.append(str(output))
         return MediaResult(self.name, self.media_type, "completed", artifacts)
 
@@ -142,16 +186,9 @@ class FreeLocalVideoProvider:
 
         duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
         command = [
-            ffmpeg, "-y",
-            "-f", "concat", "-safe", "0", "-i", str(concat_file),
-            "-i", str(audio),
-            "-t", str(duration),
-            "-vf", "fps=25,format=yuv420p",
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-af", "apad",
-            "-c:v", "libx264",
-            "-c:a", "aac",
+            ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
+            "-i", str(audio), "-t", str(duration), "-vf", "fps=25,format=yuv420p",
+            "-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-c:v", "libx264", "-c:a", "aac",
             str(output),
         ]
         try:
