@@ -26,23 +26,35 @@ jobs:
         run: |
           python -m pytest -q
 
-      - name: Create real production manifest
+      - name: Build production manifest from real content
         run: |
-          cat > production-manifest.json <<'JSON'
-          {
-            "task_id": "github-actions-real-production-0001",
-            "scene_plan": [
-              {
-                "scene": 1,
-                "text": "درس هاند ميد مجاني: فكرة بسيطة يمكن تنفيذها في المنزل."
-              }
-            ],
-            "inputs": {
-              "script": "درس هاند ميد مجاني: فكرة بسيطة يمكن تنفيذها في المنزل.",
-              "production_goal": "Create a valid local handmade lesson video artifact."
-            }
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = json.loads(Path("content/handmade_lesson_001.json").read_text(encoding="utf-8"))
+          required = ["content_id", "title", "script", "scenes", "video_format", "human_approval_required"]
+          missing = [key for key in required if key not in source]
+          if missing:
+              raise SystemExit(f"Content manifest missing: {', '.join(missing)}")
+          if source["human_approval_required"] is not True:
+              raise SystemExit("Human approval must remain mandatory.")
+
+          manifest = {
+              "task_id": source["content_id"],
+              "scene_plan": source["scenes"],
+              "inputs": {
+                  "script": source["script"],
+                  "production_goal": source["title"],
+                  "language": source["language"],
+                  "visual_style": source["visual_style"],
+              },
           }
-          JSON
+          Path("production-manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          PY
 
       - name: Run real free factory
         run: |
@@ -81,7 +93,7 @@ jobs:
 
       - name: Verify actual MP4 with ffprobe
         run: |
-          VIDEO="production/github-actions-real-production-0001/video/video.mp4"
+          VIDEO="production/handmade-lesson-001/video/video.mp4"
           test -s "$VIDEO"
           ffprobe -v error \
             -show_entries format=format_name,duration \
@@ -93,7 +105,7 @@ jobs:
           mkdir -p production-evidence
           printf '%s\n' "Real free production evidence" > production-evidence/README.txt
           printf '%s\n' "Commit: $GITHUB_SHA" >> production-evidence/README.txt
-          printf '%s\n' "Actual MP4: production/github-actions-real-production-0001/video/video.mp4" >> production-evidence/README.txt
+          printf '%s\n' "Actual MP4: production/handmade-lesson-001/video/video.mp4" >> production-evidence/README.txt
           printf '%s\n' "Artifact validation: passed" >> production-evidence/README.txt
           printf '%s\n' "Publishing: blocked until explicit human approval" >> production-evidence/README.txt
 
