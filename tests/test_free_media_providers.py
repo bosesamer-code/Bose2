@@ -13,4 +13,4 @@ def test_free_local_audio_provider_creates_wav(tmp_path: Path):
 def test_free_local_image_provider_creates_ppm(tmp_path: Path):
     result = FreeLocalImageProvider().generate(MediaRequest("image-1", tmp_path, {}))
     assert result.status == "completed"
-    assert (tmp_path / "scene.ppm").is_file()
+    assert (tmp_path / "scene_001.ppm").is_file()
