@@ -145,9 +145,11 @@ class FreeLocalVideoProvider:
             "-i", str(audio),
             "-t", str(duration),
             "-vf", "fps=25,format=yuv420p",
+            "-filter_complex", f"[1:a]apad=pad_dur={duration}[a]",
+            "-map", "0:v:0",
+            "-map", "[a]",
             "-c:v", "libx264",
             "-c:a", "aac",
-            "-shortest",
             str(output),
         ]
         try:
