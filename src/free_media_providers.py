@@ -23,7 +23,7 @@ class FreeLocalAudioProvider:
         if output.exists():
             return MediaResult(self.name, self.media_type, "completed", [str(output)])
         sample_rate = 16000
-        duration = 2
+        duration = max(2, int(request.payload.get("duration_seconds", 2)))
         frames = bytearray()
         for i in range(sample_rate * duration):
             sample = int(1200 * math.sin(2 * math.pi * 440 * i / sample_rate))
@@ -81,7 +81,8 @@ class FreeLocalVideoProvider:
             return MediaResult(self.name, self.media_type, "not_configured", [], "ffmpeg is not installed")
         if not image or not audio:
             return MediaResult(self.name, self.media_type, "waiting_for_inputs", [], "image_path and audio_path are required")
-        command = [ffmpeg, "-y", "-loop", "1", "-i", str(image), "-i", str(audio), "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(output)]
+        duration = max(2, int(request.payload.get("duration_seconds", 2)))
+        command = [ffmpeg, "-y", "-loop", "1", "-i", str(image), "-i", str(audio), "-t", str(duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(output)]
         try:
             subprocess.run(
                 command,
