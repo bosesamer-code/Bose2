@@ -17,7 +17,7 @@ def test_free_factory_stops_at_human_gate(tmp_path: Path):
 
     assert result["prepared"]["production_status"] == "prepared"
     assert result["publishing_gate"]["publish_allowed"] is False
-    assert result["publishing_gate"]["reason"] == "human_approval_required"
+    assert result["publishing_gate"]["reason"] == "human_approval_required", result["publishing_gate"]
     assert result["production"]["publish_ready"] is True
     assert result["production"]["job_state"]["status"] == "ready"
 
@@ -34,7 +34,7 @@ def test_factory_creates_one_visual_per_scene(tmp_path: Path):
     }
 
     result = run_free_factory(manifest, tmp_path)
-    assert result["production"]["validation"]["status"] == "valid"
+    assert result["production"]["validation"]["status"] == "valid", result["production"]["validation"]
 
     images = sorted((tmp_path / "factory-scene-001" / "images").glob("scene_*.ppm"))
     assert len(images) == 3
