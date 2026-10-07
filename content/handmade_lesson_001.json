@@ -1,0 +1,43 @@
+{
+  "content_id": "handmade-lesson-001",
+  "language": "ar-EG",
+  "title": "فكرة هاند ميد بسيطة للمبتدئين",
+  "topic": "handmade_basics",
+  "audience": "beginners",
+  "format": "short_lesson",
+  "script": "أهلاً بكم في درس هاند ميد مجاني. اليوم نتعرف على فكرة بسيطة للمبتدئين، ونقسم تنفيذها إلى خطوات صغيرة وواضحة. الهدف أن تتعلمي الفكرة ثم تطبقيها بطريقتك وتطوريها إلى منتج قابل للبيع.",
+  "scenes": [
+    {
+      "scene": 1,
+      "duration_seconds": 4,
+      "purpose": "hook",
+      "text": "فكرة هاند ميد بسيطة للمبتدئين"
+    },
+    {
+      "scene": 2,
+      "duration_seconds": 8,
+      "purpose": "lesson",
+      "text": "ابدئي بفكرة صغيرة، حددي الخامات، ثم قسمي التنفيذ إلى خطوات قصيرة."
+    },
+    {
+      "scene": 3,
+      "duration_seconds": 8,
+      "purpose": "application",
+      "text": "بعد أول نموذج، سجلي ما نجح وما يحتاج تعديل، ثم اصنعي نسخة أفضل."
+    },
+    {
+      "scene": 4,
+      "duration_seconds": 4,
+      "purpose": "cta",
+      "text": "تابعي الدروس القادمة لأفكار هاند ميد أكثر."
+    }
+  ],
+  "visual_style": "clean_handmade_tutorial",
+  "video_format": "mp4_16_9",
+  "publishing": {
+    "facebook": true,
+    "youtube": true,
+    "automatic_publish": false
+  },
+  "human_approval_required": true
+}
