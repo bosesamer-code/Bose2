@@ -12,6 +12,8 @@ from src.publishing_gate import PublishingGate
 
 def _factory_contract(manifest: dict[str, Any]) -> dict[str, Any]:
     """Build the public production contract for the free-factory entry point."""
+    scene_plan = list(manifest.get("scene_plan", []))
+    duration_seconds = sum(int(scene.get("duration_seconds", 0)) for scene in scene_plan)
     return {
         "contract_version": 1,
         "task_id": str(manifest["task_id"]),
@@ -21,8 +23,8 @@ def _factory_contract(manifest: dict[str, Any]) -> dict[str, Any]:
             "publish": False,
             "access_private_core": False,
         },
-        "inputs": dict(manifest.get("inputs", {})),
-        "scene_plan": list(manifest.get("scene_plan", [])),
+        "inputs": {**dict(manifest.get("inputs", {})), "duration_seconds": duration_seconds},
+        "scene_plan": scene_plan,
         "validation_requirements": [
             "required_artifact_directories",
             "media_presence",
