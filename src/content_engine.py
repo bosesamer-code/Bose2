@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
+REQUIRED_SCENES = ("hook", "lesson", "application", "cta")
+
 REQUIRED_RULES = (
     "one_clear_learning_goal",
     "include_hook",
@@ -28,6 +30,23 @@ def load_catalog(path: Path) -> dict[str, Any]:
     if missing:
         raise ValueError(f"missing_generation_rules:{','.join(missing)}")
     return catalog
+
+
+def validate_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
+    scenes = lesson.get("scenes", [])
+    if [scene.get("purpose") for scene in scenes] != list(REQUIRED_SCENES):
+        raise ValueError("invalid_scene_sequence")
+    if any(not str(scene.get("text", "")).strip() for scene in scenes):
+        raise ValueError("scene_text_required")
+    if any(int(scene.get("duration_seconds", 0)) <= 0 for scene in scenes):
+        raise ValueError("scene_duration_required")
+    if sum(int(scene["duration_seconds"]) for scene in scenes) < 20:
+        raise ValueError("lesson_too_short")
+    if lesson.get("human_approval_required") is not True:
+        raise ValueError("human_approval_required")
+    if lesson.get("publishing", {}).get("automatic_publish") is not False:
+        raise ValueError("automatic_publish_must_be_false")
+    return lesson
 
 
 def generate_lesson(catalog: dict[str, Any], topic_id: str, idea_index: int = 0) -> dict[str, Any]:
@@ -66,7 +85,7 @@ def generate_lesson(catalog: dict[str, Any], topic_id: str, idea_index: int = 0)
         },
     ]
 
-    return {
+    return validate_lesson({
         "content_id": content_id,
         "language": catalog["language"],
         "title": idea,
@@ -83,7 +102,7 @@ def generate_lesson(catalog: dict[str, Any], topic_id: str, idea_index: int = 0)
             "automatic_publish": False,
         },
         "human_approval_required": True,
-    }
+    })
 
 
 def generate_queue(
