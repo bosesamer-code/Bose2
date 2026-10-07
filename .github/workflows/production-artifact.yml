@@ -56,6 +56,53 @@ jobs:
           )
           PY
 
+      - name: Create scene and publishing package
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = json.loads(Path("content/handmade_lesson_001.json").read_text(encoding="utf-8"))
+          scenes = source["scenes"]
+          total = sum(int(scene["duration_seconds"]) for scene in scenes)
+
+          Path("production-manifest.json").write_text(
+              json.dumps({
+                  "task_id": source["content_id"],
+                  "scene_plan": scenes,
+                  "inputs": {
+                      "script": source["script"],
+                      "production_goal": source["title"],
+                      "language": source["language"],
+                      "visual_style": source["visual_style"]
+                  }
+              }, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+
+          package = {
+              "content_id": source["content_id"],
+              "title": source["title"],
+              "description": source["script"],
+              "language": source["language"],
+              "format": source["video_format"],
+              "duration_planned_seconds": total,
+              "scenes": scenes,
+              "destinations": ["facebook", "youtube"],
+              "approval": {
+                  "required": True,
+                  "approved": False
+              },
+              "automatic_publish": False,
+              "artifact": "production/handmade-lesson-001/video/video.mp4"
+          }
+          Path("production/publishing_package.json").parent.mkdir(parents=True, exist_ok=True)
+          Path("production/publishing_package.json").write_text(
+              json.dumps(package, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          PY
+
       - name: Run real free factory
         run: |
           python - <<'PY'
@@ -89,6 +136,12 @@ jobs:
               raise SystemExit("Publishing gate must remain blocked without human approval.")
           if gate["reason"] != "human_approval_required":
               raise SystemExit("Unexpected publishing gate reason.")
+
+          package = json.loads(Path("production/publishing_package.json").read_text(encoding="utf-8"))
+          if package["approval"]["approved"] is not False:
+              raise SystemExit("Publishing package must start unapproved.")
+          if package["automatic_publish"] is not False:
+              raise SystemExit("Automatic publishing must remain disabled.")
           PY
 
       - name: Verify actual MP4 with ffprobe
