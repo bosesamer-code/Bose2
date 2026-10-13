@@ -1,0 +1,107 @@
+name: test-youtube-upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_run_id:
+        description: "Successful production-artifact run ID"
+        required: true
+        type: string
+        default: "38196244470"
+      confirm_upload:
+        description: "I authorize uploading exactly one unlisted test video to YouTube"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  test-upload:
+    if: ${{ inputs.confirm_upload == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate production run ID and origin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRODUCTION_RUN_ID: ${{ inputs.production_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "Production run ID must contain digits only."
+            exit 1
+          }
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCTION_RUN_ID")"
+          workflow_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("name", ""))')"
+          head_branch="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("head_branch", ""))')"
+          conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion", ""))')"
+          [[ "$workflow_name" == "production-artifact" && "$head_branch" == "main" && "$conclusion" == "success" ]] || {
+            echo "Refusing upload: run must be a successful production-artifact run from main."
+            exit 1
+          }
+      - name: Install YouTube publishing client
+        run: |
+          python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+      - name: Download production artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: queued-production-${{ inputs.production_run_id }}
+          path: published-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.production_run_id }}
+      - name: Validate packages and select one test video
+        id: select
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packages = sorted(Path("published-input/production").glob("*/publishing_package.json"))
+          if not packages:
+              raise SystemExit("No production packages found.")
+
+          errors = []
+          valid = []
+          for package in packages:
+              video = package.parent / "video" / "video.mp4"
+              try:
+                  metadata = json.loads(package.read_text(encoding="utf-8"))
+              except Exception as exc:
+                  errors.append(f"{package}: invalid JSON ({exc})")
+                  continue
+              if not video.is_file() or video.stat().st_size == 0:
+                  errors.append(f"{video}: missing or empty")
+                  continue
+              if not isinstance(metadata.get("title"), str) or not metadata["title"].strip():
+                  errors.append(f"{package}: missing title")
+                  continue
+              if not isinstance(metadata.get("description"), str) or not metadata["description"].strip():
+                  errors.append(f"{package}: missing description")
+                  continue
+              valid.append(package)
+          if errors:
+              print("\n".join(errors))
+              raise SystemExit("Package validation failed.")
+          selected = next((p for p in valid if "crochet_basics" in str(p)), valid[0])
+          video = selected.parent / "video" / "video.mp4"
+          with open(__import__("os").environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"package={selected}\n")
+              output.write(f"video={video}\n")
+          print(f"Selected one test video: {selected.parent.name}")
+          PY
+      - name: Upload exactly one test video to YouTube as unlisted
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_PRIVACY_STATUS: unlisted
+        run: |
+          set -euo pipefail
+          python scripts/publish_youtube.py "${{ steps.select.outputs.video }}" "${{ steps.select.outputs.package }}"
