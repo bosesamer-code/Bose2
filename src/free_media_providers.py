@@ -244,8 +244,8 @@ class FreeLocalVideoProvider:
         duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
         subtitle_filter = (
             f"subtitles='{subtitle_path.resolve()}':"
-            "force_style='FontName=Noto Naskh Arabic,FontSize=18,Outline=2,"
-            "Shadow=1,Alignment=2,MarginV=34'"
+            "force_style='FontName=Noto Naskh Arabic,FontSize=17,BorderStyle=3,Outline=0,"
+            "Shadow=0,BackColour=&H80000000,Alignment=2,MarginV=22'"
         )
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
