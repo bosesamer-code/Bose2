@@ -28,7 +28,7 @@ def test_free_factory_fails_closed_without_real_speech(tmp_path: Path, monkeypat
 
     assert result["prepared"]["production_status"] == "prepared"
     assert result["publishing_gate"]["publish_allowed"] is False
-    assert result["publishing_gate"]["reason"] == "human_approval_required", result["publishing_gate"]
+    assert result["publishing_gate"]["reason"] == "artifact_validation_failed", result["publishing_gate"]
     assert result["production"]["publish_ready"] is False
     assert result["production"]["job_state"]["status"] == "failed"
 
