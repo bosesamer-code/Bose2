@@ -69,11 +69,12 @@ jobs:
           PY
       - name: Prepare publishing evidence
         run: mkdir -p publishing-evidence
-      - name: Upload lessons to YouTube as unlisted
+      - name: Upload lessons to verified YouTube channel as unlisted
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_EXPECTED_CHANNEL_HANDLE: handmade.secrets
           YOUTUBE_PRIVACY_STATUS: unlisted
         run: |
           set -euo pipefail
