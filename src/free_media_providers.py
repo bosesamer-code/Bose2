@@ -6,10 +6,21 @@ import math
 import shutil
 import struct
 import subprocess
+import textwrap
 import wave
 from pathlib import Path
 
 from src.media_providers import MediaRequest, MediaResult
+
+
+def _wrap_subtitle_text(text: str, width: int = 34) -> str:
+    """Wrap Arabic captions into readable lines for small 640x360 videos."""
+    normalized = " ".join(str(text).split())
+    if not normalized:
+        return ""
+    return "\\n".join(
+        textwrap.wrap(normalized, width=max(12, width), break_long_words=False, break_on_hyphens=False)
+    )
 
 
 class FreeLocalAudioProvider:
@@ -219,7 +230,7 @@ class FreeLocalVideoProvider:
         cursor = 0.0
         for index, scene in enumerate(scenes):
             scene_duration = durations[index] if index < len(durations) else 2
-            caption = str(scene.get("text", "")).strip()
+            caption = _wrap_subtitle_text(str(scene.get("text", "")).strip())
             if caption:
                 subtitle_lines.extend([
                     str(index + 1),
@@ -233,8 +244,8 @@ class FreeLocalVideoProvider:
         duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
         subtitle_filter = (
             f"subtitles='{subtitle_path.resolve()}':"
-            "force_style='FontName=Noto Naskh Arabic,FontSize=22,Outline=2,"
-            "Shadow=1,Alignment=2,MarginV=22'"
+            "force_style='FontName=Noto Naskh Arabic,FontSize=18,Outline=2,"
+            "Shadow=1,Alignment=2,MarginV=34'"
         )
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
