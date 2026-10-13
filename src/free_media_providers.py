@@ -18,7 +18,7 @@ def _wrap_subtitle_text(text: str, width: int = 34) -> str:
     normalized = " ".join(str(text).split())
     if not normalized:
         return ""
-    return "\\n".join(
+    return "\n".join(
         textwrap.wrap(normalized, width=max(12, width), break_long_words=False, break_on_hyphens=False)
     )
 
