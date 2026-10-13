@@ -13,36 +13,38 @@ from src.media_providers import MediaRequest, MediaResult
 
 
 class FreeLocalAudioProvider:
-    name = "free-local-audio"
+    """Generate real Egyptian Arabic speech; never substitute a tone for narration."""
+
+    name = "free-edge-tts-ar-eg"
     media_type = "audio"
 
     def generate(self, request: MediaRequest) -> MediaResult:
         request.output_dir.mkdir(parents=True, exist_ok=True)
-        output = request.output_dir / "voice.wav"
-        if output.exists():
-            return MediaResult(self.name, self.media_type, "completed", [str(output)])
-
+        output = request.output_dir / "voice.mp3"
         script = str(request.payload.get("script", "")).strip()
-        espeak = shutil.which("espeak-ng") or shutil.which("espeak")
-        if espeak and script:
-            command = [espeak, "-v", "ar", "-s", "150", "-w", str(output), script]
-            try:
-                subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
-                return MediaResult(self.name, self.media_type, "completed", [str(output)])
-            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                pass
+        if not script:
+            return MediaResult(self.name, self.media_type, "failed", [], "Arabic narration script is empty")
 
-        sample_rate = 16000
-        duration = max(2, int(request.payload.get("duration_seconds", 2)))
-        frames = bytearray()
-        for i in range(sample_rate * duration):
-            sample = int(1200 * math.sin(2 * math.pi * 440 * i / sample_rate))
-            frames.extend(struct.pack("<h", sample))
-        with wave.open(str(output), "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(sample_rate)
-            wav.writeframes(frames)
+        edge_tts = shutil.which("edge-tts")
+        if not edge_tts:
+            return MediaResult(
+                self.name, self.media_type, "not_configured", [],
+                "edge-tts is not installed; refusing to create fake/silent narration",
+            )
+
+        command = [
+            edge_tts, "--voice", "ar-EG-SalmaNeural",
+            "--rate", "+0%", "--text", script, "--write-media", str(output),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=90)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], f"Egyptian Arabic TTS failed: {exc}")
+
+        if not output.is_file() or output.stat().st_size < 1024:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], "TTS output is missing or too small")
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
@@ -53,76 +55,87 @@ class FreeLocalImageProvider:
     media_type = "image"
 
     @staticmethod
-    def _scene_rgb(scene_number: int, purpose: str) -> tuple[int, int, int]:
-        palette = {
-            "hook": (225, 190, 120),
-            "lesson": (150, 190, 220),
-            "application": (170, 205, 160),
-            "cta": (210, 165, 205),
-        }
-        base = palette.get(purpose, (180, 180, 180))
-        shift = (scene_number * 11) % 24
-        return tuple(min(255, channel + shift) for channel in base)
-
-    @staticmethod
     def _fill_rect(buf: bytearray, width: int, height: int, x0: int, y0: int, x1: int, y1: int, rgb: tuple[int, int, int]) -> None:
         x0, x1 = max(0, x0), min(width, x1)
         y0, y1 = max(0, y0), min(height, y1)
-        row = bytes(rgb) * max(0, x1 - x0)
+        if x1 <= x0 or y1 <= y0:
+            return
+        row = bytes(rgb) * (x1 - x0)
         for y in range(y0, y1):
             start = (y * width + x0) * 3
             buf[start:start + len(row)] = row
 
     @classmethod
+    def _circle(cls, buf: bytearray, width: int, height: int, cx: int, cy: int, radius: int, rgb: tuple[int, int, int]) -> None:
+        r2 = radius * radius
+        for y in range(max(0, cy-radius), min(height, cy+radius+1)):
+            span = int(max(0, r2 - (y-cy)*(y-cy)) ** 0.5)
+            cls._fill_rect(buf, width, height, cx-span, y, cx+span+1, y+1, rgb)
+
+    @classmethod
+    def _line(cls, buf: bytearray, width: int, height: int, x0: int, y0: int, x1: int, y1: int, rgb: tuple[int, int, int], thickness: int = 4) -> None:
+        steps = max(abs(x1-x0), abs(y1-y0), 1)
+        for step in range(steps + 1):
+            x = int(x0 + (x1-x0) * step / steps)
+            y = int(y0 + (y1-y0) * step / steps)
+            cls._circle(buf, width, height, x, y, thickness, rgb)
+
+    @classmethod
+    def _avatar(cls, buf: bytearray, width: int, height: int) -> None:
+        """A consistent friendly illustrated host, repeated in every scene."""
+        skin = (235, 177, 139)
+        hair = (65, 43, 36)
+        shirt = (112, 72, 133)
+        outline = (65, 43, 52)
+        cls._fill_rect(buf, width, height, 55, 220, 190, 335, shirt)
+        cls._circle(buf, width, height, 122, 158, 65, hair)
+        cls._circle(buf, width, height, 122, 166, 48, skin)
+        cls._circle(buf, width, height, 91, 130, 27, hair)
+        cls._circle(buf, width, height, 151, 132, 26, hair)
+        cls._fill_rect(buf, width, height, 73, 124, 170, 145, hair)
+        cls._line(buf, width, height, 91, 156, 104, 156, outline, 3)
+        cls._line(buf, width, height, 139, 156, 152, 156, outline, 3)
+        cls._line(buf, width, height, 104, 183, 122, 190, (155, 65, 68), 3)
+        cls._line(buf, width, height, 122, 190, 140, 183, (155, 65, 68), 3)
+        cls._fill_rect(buf, width, height, 104, 222, 140, 244, (246, 230, 218))
+
+    @classmethod
+    def _yarn_and_crochet(cls, buf: bytearray, width: int, height: int, variant: int) -> None:
+        yarns = [(205, 91, 116), (74, 139, 157), (224, 167, 77)]
+        yarn = yarns[variant % len(yarns)]
+        cream = (250, 240, 219)
+        dark = (85, 65, 60)
+        cls._circle(buf, width, height, 390, 210, 70, yarn)
+        cls._line(buf, width, height, 335, 190, 435, 240, cream, 5)
+        cls._line(buf, width, height, 340, 235, 430, 175, cream, 5)
+        cls._line(buf, width, height, 355, 160, 415, 258, cream, 4)
+        cls._line(buf, width, height, 350, 255, 430, 165, cream, 4)
+        cls._line(buf, width, height, 455, 120, 530, 265, dark, 5)
+        cls._circle(buf, width, height, 454, 119, 7, (236, 196, 126))
+        cls._fill_rect(buf, width, height, 300, 285, 505, 326, (235, 211, 173))
+        for y in (292, 303, 314):
+            for x in range(307, 500, 20):
+                cls._circle(buf, width, height, x, y, 5, yarn)
+
+    @classmethod
     def _draw_visual(cls, width: int, height: int, scene_number: int, purpose: str, scene: dict) -> bytes:
-        red, green, blue = cls._scene_rgb(scene_number, purpose)
-        bg = bytearray(bytes((red, green, blue)) * (width * height))
-        dark = (max(25, red - 85), max(25, green - 85), max(25, blue - 85))
-        light = (min(255, red + 30), min(255, green + 30), min(255, blue + 30))
-        text = str(scene.get("text", "")).lower()
-
-        cls._fill_rect(bg, width, height, 0, 0, width, 42, dark)
-
-        if purpose == "hook":
-            # A focal card for the idea being introduced.
-            cls._fill_rect(bg, width, height, 150, 85, 490, 275, light)
-            cls._fill_rect(bg, width, height, 205, 125, 435, 235, dark)
-            cls._fill_rect(bg, width, height, 235, 155, 405, 205, light)
-        elif purpose == "lesson":
-            # "steps / خَطوات / خطوات / ابدئي / قسمي" -> a numbered process.
-            step_words = ("step", "steps", "خطوة", "خطوات", "ابدئي", "قسمي", "أول", "ثاني", "ثالث")
-            count = 4 if any(word in text for word in step_words) else 3
-            gap = 18
-            block_w = (width - 2 * 55 - (count - 1) * gap) // count
-            for i in range(count):
-                x = 55 + i * (block_w + gap)
-                cls._fill_rect(bg, width, height, x, 105, x + block_w, 230, light)
-                cls._fill_rect(bg, width, height, x + 12, 122, x + block_w - 12, 142, dark)
-                if i < count - 1:
-                    cls._fill_rect(bg, width, height, x + block_w, 157, x + block_w + gap, 178, dark)
-        elif purpose == "application":
-            # "review / improve / model" -> review loop; otherwise checklist.
-            review_words = ("راجع", "راجعي", "تعديل", "تحسين", "حسن", "النموذج", "improv", "review")
-            if any(word in text for word in review_words):
-                cls._fill_rect(bg, width, height, 120, 105, 520, 235, light)
-                cls._fill_rect(bg, width, height, 170, 140, 470, 165, dark)
-                cls._fill_rect(bg, width, height, 170, 178, 405, 203, dark)
-                cls._fill_rect(bg, width, height, 410, 178, 470, 203, light)
-            else:
-                for i in range(3):
-                    y = 92 + i * 72
-                    cls._fill_rect(bg, width, height, 120, y, 155, y + 35, light)
-                    cls._fill_rect(bg, width, height, 175, y + 7, 500, y + 28, dark)
-        elif purpose == "cta":
-            # Forward arrow = continue to the next lesson/action.
-            cls._fill_rect(bg, width, height, 120, 145, 445, 205, light)
-            for i in range(7):
-                cls._fill_rect(bg, width, height, 420 + i * 18, 112 + i * 10, 438 + i * 18, 238 - i * 10, light)
-        else:
-            cls._fill_rect(bg, width, height, 150, 100, 490, 260, light)
-
-        # Scene number marker makes sequence/order explicit.
-        cls._fill_rect(bg, width, height, 24, 55, 92, 123, dark)
+        palettes = {
+            "hook": (255, 244, 226),
+            "lesson": (238, 247, 242),
+            "application": (246, 239, 250),
+            "cta": (255, 241, 231),
+        }
+        bg_color = palettes.get(purpose, (246, 244, 237))
+        bg = bytearray(bytes(bg_color) * (width * height))
+        cls._fill_rect(bg, width, height, 0, 0, width, 38, (75, 56, 75))
+        cls._avatar(bg, width, height)
+        cls._yarn_and_crochet(bg, width, height, scene_number)
+        accents = {"hook": (205, 91, 116), "lesson": (74, 139, 157), "application": (224, 167, 77), "cta": (112, 72, 133)}
+        accent = accents.get(purpose, (112, 72, 133))
+        cls._circle(bg, width, height, 575, 92, 28, accent)
+        cls._circle(bg, width, height, 575, 92, 13, (255, 250, 240))
+        cls._circle(bg, width, height, 35, 66, 17, (75, 56, 75))
+        cls._circle(bg, width, height, 35, 66, 7, (255, 244, 226))
         return bytes(bg)
 
     def generate(self, request: MediaRequest) -> MediaResult:
