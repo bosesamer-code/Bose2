@@ -87,13 +87,13 @@ jobs:
                   continue
               valid.append(package)
           if errors:
-              print("\\n".join(errors))
+              print("\n".join(errors))
               raise SystemExit("Package validation failed.")
           selected = next((p for p in valid if "crochet_basics" in str(p)), valid[0])
           video = selected.parent / "video" / "video.mp4"
           with open(__import__("os").environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"package={selected}\\n")
-              output.write(f"video={video}\\n")
+              output.write(f"package={selected}\n")
+              output.write(f"video={video}\n")
           print(f"Selected one test video: {selected.parent.name}")
           PY
       - name: Upload exactly one test video to verified channel as unlisted
