@@ -63,10 +63,12 @@ jobs:
                   if not isinstance(metadata.get(field), str) or not metadata[field].strip():
                       errors.append(f"{package}: missing/empty {field}")
           if errors:
-              print("\\n".join(errors))
+              print("\n".join(errors))
               raise SystemExit("Validation failed; no videos were uploaded.")
           print(f"Validated {len(packages)} video package(s).")
           PY
+      - name: Prepare publishing evidence
+        run: mkdir -p publishing-evidence
       - name: Upload lessons to YouTube as unlisted
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -80,7 +82,7 @@ jobs:
             root="$(dirname "$package")"
             video="$root/video/video.mp4"
             echo "Uploading $(basename "$root") to YouTube as unlisted"
-            python scripts/publish_youtube.py "$video" "$package"
+            python scripts/publish_youtube.py "$video" "$package" | tee -a publishing-evidence/uploads.jsonl
           done
       - name: Write publishing evidence
         if: always()
