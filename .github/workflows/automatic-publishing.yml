@@ -15,9 +15,12 @@ concurrency:
 
 jobs:
   publish:
+    # Safe by default: with AUTO_PUBLISH_ENABLED unset/false, the job is skipped
+    # cleanly before downloading artifacts or accessing publishing credentials.
     if: >-
       ${{ github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' }}
+      github.event.workflow_run.head_branch == 'main' &&
+      vars.AUTO_PUBLISH_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,9 +28,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install publishing clients
+      - name: Install YouTube publishing client
         run: |
-          python -m pip install --disable-pip-version-check requests google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+          python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
       - name: Download production artifact
         uses: actions/download-artifact@v5
         with:
@@ -35,38 +38,60 @@ jobs:
           path: published-input
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Check owner authorization
-        env:
-          AUTO_PUBLISH_ENABLED: ${{ vars.AUTO_PUBLISH_ENABLED }}
+      - name: Validate every queued YouTube video before uploading
         run: |
-          test "$AUTO_PUBLISH_ENABLED" = "true" || {
-            echo "Automatic publishing is disabled by the owner."
-            exit 1
-          }
-      - name: Publish all generated lessons
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packages = sorted(Path("published-input/production").glob("*/publishing_package.json"))
+          if not packages:
+              raise SystemExit("No publishing packages found; refusing to publish.")
+
+          errors = []
+          for package in packages:
+              root = package.parent
+              video = root / "video" / "video.mp4"
+              try:
+                  metadata = json.loads(package.read_text(encoding="utf-8"))
+              except Exception as exc:
+                  errors.append(f"{package}: invalid JSON ({exc})")
+                  continue
+              if not video.is_file() or video.stat().st_size == 0:
+                  errors.append(f"{video}: missing or empty")
+              for field in ("title", "description"):
+                  if not isinstance(metadata.get(field), str) or not metadata[field].strip():
+                      errors.append(f"{package}: missing/empty {field}")
+          if errors:
+              print("\\n".join(errors))
+              raise SystemExit("Validation failed; no videos were uploaded.")
+          print(f"Validated {len(packages)} video package(s).")
+          PY
+      - name: Upload lessons to YouTube as unlisted
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          YOUTUBE_PRIVACY_STATUS: public
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
-          FACEBOOK_GRAPH_VERSION: v26.0
+          YOUTUBE_PRIVACY_STATUS: unlisted
         run: |
           set -euo pipefail
+          shopt -s nullglob
           for package in published-input/production/*/publishing_package.json; do
             root="$(dirname "$package")"
             video="$root/video/video.mp4"
-            echo "Publishing $(basename "$root")"
+            echo "Uploading $(basename "$root") to YouTube as unlisted"
             python scripts/publish_youtube.py "$video" "$package"
-            python scripts/publish_facebook.py "$video" "$package"
           done
       - name: Write publishing evidence
+        if: always()
         run: |
           mkdir -p publishing-evidence
-          printf '%s\n' "Automatic publishing completed." > publishing-evidence/README.txt
+          printf '%s\n' "YouTube-only publishing workflow finished." > publishing-evidence/README.txt
           printf '%s\n' "Production run: ${{ github.event.workflow_run.id }}" >> publishing-evidence/README.txt
+          printf '%s\n' "Privacy default: unlisted" >> publishing-evidence/README.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: publishing-evidence-${{ github.run_id }}
           path: publishing-evidence/
+          if-no-files-found: warn
