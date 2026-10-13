@@ -85,3 +85,14 @@ def test_free_local_image_provider_draws_host_and_handmade_props(tmp_path: Path)
         data = Path(artifact).read_bytes()
         assert data.startswith(b"P6\n640 360\n255\n")
         assert len(data) > 640 * 360 * 3
+
+
+def test_arabic_subtitles_wrap_into_mobile_readable_lines():
+    from src.free_media_providers import _wrap_subtitle_text
+
+    text = "ابدئي بخطوة بسيطة وحددي الخامات والأدوات قبل التنفيذ"
+    wrapped = _wrap_subtitle_text(text, width=24)
+
+    assert "\\n" in wrapped
+    assert " ".join(wrapped.splitlines()) == text
+    assert all(len(line) <= 24 for line in wrapped.splitlines())
