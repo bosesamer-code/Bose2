@@ -63,7 +63,7 @@ jobs:
                   if not isinstance(metadata.get(field), str) or not metadata[field].strip():
                       errors.append(f"{package}: missing/empty {field}")
           if errors:
-              print("\\n".join(errors))
+              print("\n".join(errors))
               raise SystemExit("Validation failed; no videos were uploaded.")
           print(f"Validated {len(packages)} video package(s).")
           PY
@@ -89,9 +89,9 @@ jobs:
         if: always()
         run: |
           mkdir -p publishing-evidence
-          printf '%s\\n' "YouTube-only publishing workflow finished." > publishing-evidence/README.txt
-          printf '%s\\n' "Production run: ${{ github.event.workflow_run.id }}" >> publishing-evidence/README.txt
-          printf '%s\\n' "Privacy default: unlisted" >> publishing-evidence/README.txt
+          printf '%s\n' "YouTube-only publishing workflow finished." > publishing-evidence/README.txt
+          printf '%s\n' "Production run: ${{ github.event.workflow_run.id }}" >> publishing-evidence/README.txt
+          printf '%s\n' "Privacy default: unlisted" >> publishing-evidence/README.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
