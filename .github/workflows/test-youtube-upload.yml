@@ -9,7 +9,7 @@ on:
         type: string
         default: "38196244470"
       confirm_upload:
-        description: "I authorize uploading exactly one unlisted test video to the verified target channel"
+        description: "I authorize uploading exactly one private test video to the verified target channel"
         required: true
         type: boolean
         default: false
@@ -96,13 +96,13 @@ jobs:
               output.write(f"video={video}\n")
           print(f"Selected one test video: {selected.parent.name}")
           PY
-      - name: Upload exactly one test video to verified channel as unlisted
+      - name: Upload exactly one test video to verified channel as private
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_EXPECTED_CHANNEL_HANDLE: handmade.secrets
-          YOUTUBE_PRIVACY_STATUS: unlisted
+          YOUTUBE_PRIVACY_STATUS: private
         run: |
           set -euo pipefail
           python scripts/publish_youtube.py "${{ steps.select.outputs.video }}" "${{ steps.select.outputs.package }}"
