@@ -4,10 +4,36 @@ from src.free_media_providers import FreeLocalAudioProvider, FreeLocalImageProvi
 from src.media_providers import MediaRequest
 
 
-def test_free_local_audio_provider_creates_wav(tmp_path: Path):
-    result = FreeLocalAudioProvider().generate(MediaRequest("audio-1", tmp_path, {}))
+def test_free_local_audio_provider_creates_real_egyptian_speech(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+
+    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/edge-tts" if name == "edge-tts" else None)
+
+    def fake_tts(command, **kwargs):
+        assert "ar-EG-SalmaNeural" in command
+        output = Path(command[command.index("--write-media") + 1])
+        output.write_bytes(b"ID3" + b"\x00" * 1500)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_tts)
+    result = FreeLocalAudioProvider().generate(
+        MediaRequest("audio-1", tmp_path, {"script": "أهلاً بيكم في أسرار الهاند ميد"})
+    )
     assert result.status == "completed"
-    assert (tmp_path / "voice.wav").is_file()
+    assert (tmp_path / "voice.mp3").is_file()
+    assert not (tmp_path / "voice.wav").exists()
+
+
+def test_free_local_audio_provider_never_falls_back_to_tone(tmp_path: Path, monkeypatch):
+    import src.free_media_providers as providers
+
+    monkeypatch.setattr(providers.shutil, "which", lambda _name: None)
+    result = FreeLocalAudioProvider().generate(
+        MediaRequest("audio-2", tmp_path, {"script": "نص عربي واضح"})
+    )
+    assert result.status == "not_configured"
+    assert not list(tmp_path.glob("voice.*"))
 
 
 def test_free_local_image_provider_creates_ppm(tmp_path: Path):
