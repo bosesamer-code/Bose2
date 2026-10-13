@@ -89,8 +89,8 @@ jobs:
                   "duration_planned_seconds": duration,
                   "scenes": content["scenes"],
                   "destinations": ["facebook", "youtube"],
-                  "approval": {"required": False, "approved": True},
-                  "automatic_publish": True,
+                  "approval": {"required": True, "approved": False},
+                  "automatic_publish": False,
                   "owner_controlled": True,
                   "artifact": "production/" + content["content_id"] + "/video/video.mp4",
               }
@@ -130,7 +130,7 @@ jobs:
           for content in queue:
               root = Path("production") / content["content_id"]
               video = root / "video" / "video.mp4"
-              audio = root / "audio" / "voice.wav"
+              audio = root / "audio" / "voice.mp3"
               images = sorted((root / "images").glob("scene_*.ppm"))
               if len(images) != len(content["scenes"]):
                   raise SystemExit("Scene image count mismatch: " + content["content_id"])
@@ -160,8 +160,8 @@ jobs:
           mkdir -p production-evidence
           printf '%s\n' "Queued handmade production evidence" > production-evidence/README.txt
           printf '%s\n' "Commit: $GITHUB_SHA" >> production-evidence/README.txt
-          printf '%s\n' "Jobs: 3" >> production-evidence/README.txt
-          printf '%s\n' "Publishing: automatic after successful production and owner authorization" >> production-evidence/README.txt
+          printf '%s\n' "Jobs: $(python -c 'import json; print(len(json.load(open("production-evidence.json", encoding="utf-8"))))')" >> production-evidence/README.txt
+          printf '%s\n' "Publishing: disabled in production workflow; human review and separate explicit upload authorization required" >> production-evidence/README.txt
       - name: Upload queued production artifacts
         uses: actions/upload-artifact@v4
         with:
