@@ -63,17 +63,18 @@ jobs:
                   if not isinstance(metadata.get(field), str) or not metadata[field].strip():
                       errors.append(f"{package}: missing/empty {field}")
           if errors:
-              print("\n".join(errors))
+              print("\\n".join(errors))
               raise SystemExit("Validation failed; no videos were uploaded.")
           print(f"Validated {len(packages)} video package(s).")
           PY
       - name: Prepare publishing evidence
         run: mkdir -p publishing-evidence
-      - name: Upload lessons to YouTube as unlisted
+      - name: Upload lessons to verified YouTube channel as unlisted
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_EXPECTED_CHANNEL_HANDLE: handmade.secrets
           YOUTUBE_PRIVACY_STATUS: unlisted
         run: |
           set -euo pipefail
@@ -88,9 +89,9 @@ jobs:
         if: always()
         run: |
           mkdir -p publishing-evidence
-          printf '%s\n' "YouTube-only publishing workflow finished." > publishing-evidence/README.txt
-          printf '%s\n' "Production run: ${{ github.event.workflow_run.id }}" >> publishing-evidence/README.txt
-          printf '%s\n' "Privacy default: unlisted" >> publishing-evidence/README.txt
+          printf '%s\\n' "YouTube-only publishing workflow finished." > publishing-evidence/README.txt
+          printf '%s\\n' "Production run: ${{ github.event.workflow_run.id }}" >> publishing-evidence/README.txt
+          printf '%s\\n' "Privacy default: unlisted" >> publishing-evidence/README.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
