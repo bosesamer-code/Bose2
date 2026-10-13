@@ -202,10 +202,43 @@ class FreeLocalVideoProvider:
         lines.append(f"file '{str(Path(images[-1]).resolve()).replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'")
         concat_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+        # Burn each scene's Arabic teaching line into the video so it remains
+        # understandable even when viewers watch with sound off.
+        def srt_time(seconds: float) -> str:
+            whole = int(seconds)
+            millis = int(round((seconds - whole) * 1000))
+            if millis == 1000:
+                whole += 1
+                millis = 0
+            hours, remainder = divmod(whole, 3600)
+            minutes, secs = divmod(remainder, 60)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+        subtitle_path = request.output_dir / "scene_subtitles.srt"
+        subtitle_lines = []
+        cursor = 0.0
+        for index, scene in enumerate(scenes):
+            scene_duration = durations[index] if index < len(durations) else 2
+            caption = str(scene.get("text", "")).strip()
+            if caption:
+                subtitle_lines.extend([
+                    str(index + 1),
+                    f"{srt_time(cursor)} --> {srt_time(cursor + scene_duration)}",
+                    caption,
+                    "",
+                ])
+            cursor += scene_duration
+        subtitle_path.write_text("\n".join(subtitle_lines), encoding="utf-8")
+
         duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
+        subtitle_filter = (
+            f"subtitles='{subtitle_path.resolve()}':"
+            "force_style='FontName=Noto Naskh Arabic,FontSize=22,Outline=2,"
+            "Shadow=1,Alignment=2,MarginV=22'"
+        )
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
-            "-i", str(audio), "-t", str(duration), "-vf", "fps=25,format=yuv420p",
+            "-i", str(audio), "-t", str(duration), "-vf", f"{subtitle_filter},fps=25,format=yuv420p",
             "-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-c:v", "libx264", "-c:a", "aac",
             str(output),
         ]
