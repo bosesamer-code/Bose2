@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install test dependencies
-        run: python -m pip install --disable-pip-version-check --no-input pytest
+        run: python -m pip install --disable-pip-version-check --no-input pytest edge-tts
       - name: Install free media dependency
         timeout-minutes: 5
         env:
