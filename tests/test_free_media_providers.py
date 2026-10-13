@@ -63,7 +63,7 @@ def test_free_local_image_provider_encodes_scene_purpose(tmp_path: Path):
     assert len({Path(path).read_bytes() for path in result.artifacts}) == 4
 
 
-def test_free_local_image_provider_uses_scene_text_for_lesson_structure(tmp_path: Path):
+def test_free_local_image_provider_draws_host_and_handmade_props(tmp_path: Path):
     provider = FreeLocalImageProvider()
     four_steps = provider.generate(
         MediaRequest(
@@ -81,4 +81,7 @@ def test_free_local_image_provider_uses_scene_text_for_lesson_structure(tmp_path
     )
     assert four_steps.status == "completed"
     assert three_steps.status == "completed"
-    assert Path(four_steps.artifacts[0]).read_bytes() != Path(three_steps.artifacts[0]).read_bytes()
+    for artifact in (four_steps.artifacts[0], three_steps.artifacts[0]):
+        data = Path(artifact).read_bytes()
+        assert data.startswith(b"P6\\n640 360\\n255\\n")
+        assert len(data) > 640 * 360 * 3
