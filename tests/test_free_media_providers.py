@@ -83,5 +83,5 @@ def test_free_local_image_provider_draws_host_and_handmade_props(tmp_path: Path)
     assert three_steps.status == "completed"
     for artifact in (four_steps.artifacts[0], three_steps.artifacts[0]):
         data = Path(artifact).read_bytes()
-        assert data.startswith(b"P6\\n640 360\\n255\\n")
+        assert data.startswith(b"P6\n640 360\n255\n")
         assert len(data) > 640 * 360 * 3
