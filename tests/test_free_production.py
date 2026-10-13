@@ -1,22 +1,33 @@
 from pathlib import Path
+import shutil
 
+import src.free_media_providers as media_providers
 from src.free_production import run_free_production
 
 
-def test_free_production_builds_and_validates_job(tmp_path: Path):
+def _disable_network_tts_for_unit_test(monkeypatch):
+    real_which = shutil.which
+    monkeypatch.setattr(
+        media_providers.shutil, "which",
+        lambda name: None if name == "edge-tts" else real_which(name),
+    )
+
+
+def test_free_production_blocks_job_without_real_speech(tmp_path: Path, monkeypatch):
+    _disable_network_tts_for_unit_test(monkeypatch)
     result = run_free_production(
         "free-0001",
         tmp_path,
         {"script": "Teach a handmade technique."},
     )
 
-    assert result["status"] in {"completed", "waiting_for_providers"}
-    if result["status"] == "completed":
-        assert result["validation"]["status"] == "valid"
-        assert result["publish_ready"] is True
+    assert result["status"] == "waiting_for_providers"
+    assert result["publish_ready"] is False
+    assert result["job_state"]["status"] == "failed"
 
 
-def test_free_production_rerun_of_ready_job_is_stable(tmp_path: Path):
+def test_free_production_rerun_of_ready_job_is_stable(tmp_path: Path, monkeypatch):
+    _disable_network_tts_for_unit_test(monkeypatch)
     first = run_free_production("free-rerun-0001", tmp_path, {"script": "Teach crochet."})
     if first["job_state"]["status"] != "ready":
         return
