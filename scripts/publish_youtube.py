@@ -89,11 +89,13 @@ def main() -> int:
         scopes=SCOPES,
     )
     youtube = build("youtube", "v3", credentials=creds)
-    verify_target_channel(youtube)
+    target_channel_id = verify_target_channel(youtube)
 
-    privacy_status = os.getenv("YOUTUBE_PRIVACY_STATUS", "unlisted")
-    if privacy_status not in {"private", "unlisted", "public"}:
-        raise SystemExit("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
+    # This project is configured for private-only uploads. Fail closed even if a workflow
+    # accidentally passes "public" or "unlisted".
+    privacy_status = os.getenv("YOUTUBE_PRIVACY_STATUS", "private").strip().lower()
+    if privacy_status != "private":
+        raise SystemExit("Safety guard: this project only permits YOUTUBE_PRIVACY_STATUS=private")
 
     body = {
         "snippet": {
@@ -109,12 +111,27 @@ def main() -> int:
         media_body=MediaFileUpload(str(video), mimetype="video/mp4", resumable=True),
     )
     response = request.execute()
+    uploaded_id = response.get("id")
+    uploaded_channel_id = response.get("snippet", {}).get("channelId")
+    uploaded_privacy = response.get("status", {}).get("privacyStatus")
+    if not uploaded_id:
+        raise SystemExit("YouTube upload response did not include a video ID; inspect upload status manually.")
+    if uploaded_channel_id != target_channel_id:
+        raise SystemExit(
+            "Safety alert: YouTube response channel ID does not match the verified target channel. "
+            "Do not retry blindly; inspect the video in YouTube Studio."
+        )
+    if uploaded_privacy != "private":
+        raise SystemExit(
+            f"Safety alert: YouTube did not confirm private visibility (reported {uploaded_privacy!r}). "
+            "Inspect the video in YouTube Studio immediately."
+        )
     print(json.dumps({
         "destination": "youtube",
         "status": "uploaded",
-        "privacy_status": privacy_status,
-        "video_id": response["id"],
-        "channel_id": response.get("snippet", {}).get("channelId"),
+        "privacy_status": uploaded_privacy,
+        "video_id": uploaded_id,
+        "channel_id": uploaded_channel_id,
     }, ensure_ascii=False))
     return 0
 
