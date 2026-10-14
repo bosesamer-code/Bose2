@@ -111,8 +111,11 @@ jobs:
               evidence.append({
                   "content_id": content["content_id"],
                   "duration_planned_seconds": duration,
-                  "publish_ready": True,
-                  "automatic_publish": True,
+                  "media_validation_passed": True,
+                  "human_approval_required": True,
+                  "human_approved": False,
+                  "publish_ready": False,
+                  "automatic_publish": False,
               })
 
           Path("production-evidence.json").write_text(
