@@ -96,3 +96,41 @@ def test_arabic_subtitles_wrap_into_mobile_readable_lines():
     assert "\n" in wrapped
     assert " ".join(wrapped.splitlines()) == text
     assert all(len(line) <= 24 for line in wrapped.splitlines())
+
+
+def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+    from src.free_media_providers import FreeLocalVideoProvider
+
+    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
+    image = tmp_path / "scene_001.ppm"
+    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    audio = tmp_path / "voice.mp3"
+    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    seen = {}
+
+    def fake_ffmpeg(command, **kwargs):
+        seen["command"] = command
+        Path(command[-1]).write_bytes(b"fake mp4")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_ffmpeg)
+    result = FreeLocalVideoProvider().generate(
+        MediaRequest(
+            "video-hd",
+            tmp_path / "out",
+            {
+                "image_paths": [str(image)],
+                "audio_path": str(audio),
+                "duration_seconds": 3,
+                "scene_plan": [{"scene": 1, "purpose": "lesson", "text": "خطوة عملية", "duration_seconds": 3}],
+            },
+        )
+    )
+    command = seen["command"]
+    assert result.status == "completed"
+    assert "s=1920x1080" in command[command.index("-vf") + 1]
+    assert "zoompan" in command[command.index("-vf") + 1]
+    assert "-crf" in command and "18" in command
+    assert Path(result.artifacts[0]).is_file()
