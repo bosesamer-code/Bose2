@@ -203,7 +203,32 @@ class FreeLocalVideoProvider:
 
         durations = [max(1, int(scene.get("duration_seconds", 1))) for scene in scenes]
         if len(durations) != len(images):
-            durations = [max(1, int(request.payload.get("duration_seconds", 2))) // len(images)] * len(images)
+            fallback_total = max(len(images), int(request.payload.get("duration_seconds", 2)))
+            durations = [max(1, fallback_total // len(images))] * len(images)
+
+        # Narration length is authoritative: never truncate spoken words to fit
+        # an estimated scene plan. Stretch scene timings proportionally when needed.
+        planned_duration = sum(durations)
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            try:
+                probe = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+                    check=True, capture_output=True, text=True, timeout=15,
+                )
+                narration_duration = float(probe.stdout.strip())
+                if narration_duration <= 0:
+                    raise ValueError("narration duration must be positive")
+                target_duration = max(planned_duration, math.ceil(narration_duration))
+                if target_duration > planned_duration:
+                    scaled = [max(1, round(value * target_duration / planned_duration)) for value in durations]
+                    scaled[-1] += target_duration - sum(scaled)
+                    if scaled[-1] < 1:
+                        raise ValueError("unable to scale scene durations safely")
+                    durations = scaled
+            except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                return MediaResult(self.name, self.media_type, "failed", [], f"Could not validate narration duration: {exc}")
         concat_file = request.output_dir / "scenes.txt"
         lines = []
         for image, duration in zip(images, durations):
