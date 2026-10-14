@@ -222,10 +222,8 @@ class FreeLocalVideoProvider:
                     raise ValueError("narration duration must be positive")
                 target_duration = max(planned_duration, math.ceil(narration_duration))
                 if target_duration > planned_duration:
-                    scaled = [max(1, round(value * target_duration / planned_duration)) for value in durations]
+                    scaled = [max(1, int(value * target_duration / planned_duration)) for value in durations]
                     scaled[-1] += target_duration - sum(scaled)
-                    if scaled[-1] < 1:
-                        raise ValueError("unable to scale scene durations safely")
                     durations = scaled
             except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 return MediaResult(self.name, self.media_type, "failed", [], f"Could not validate narration duration: {exc}")
@@ -266,7 +264,7 @@ class FreeLocalVideoProvider:
             cursor += scene_duration
         subtitle_path.write_text("\n".join(subtitle_lines), encoding="utf-8")
 
-        duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
+        duration = max(2, sum(durations))
         subtitle_filter = (
             f"subtitles='{subtitle_path.resolve()}':"
             "force_style='FontName=Noto Naskh Arabic,FontSize=34,BorderStyle=3,Outline=1,"
