@@ -153,7 +153,7 @@ def test_video_duration_expands_to_preserve_full_narration(tmp_path: Path, monke
 
     def fake_run(command, **kwargs):
         if command[0].endswith("ffprobe"):
-            return subprocess.CompletedProcess(command, 0, "6.2\\n", "")
+            return subprocess.CompletedProcess(command, 0, "6.2", "")
         seen["command"] = command
         Path(command[-1]).write_bytes(b"fake mp4")
         return subprocess.CompletedProcess(command, 0, "", "")
