@@ -122,41 +122,81 @@ jobs:
               json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8"
           )
           PY
-      - name: Verify every generated MP4 and spoken audio
+      - name: Verify every generated MP4, spoken audio, and captions
         run: |
           python - <<'PY'
           import json
           import subprocess
           from pathlib import Path
 
+          def probe(path):
+              result = subprocess.run(
+                  ["ffprobe", "-v", "error", "-show_streams", "-show_format",
+                   "-of", "json", str(path)],
+                  capture_output=True, text=True, check=False,
+              )
+              if result.returncode:
+                  raise SystemExit("ffprobe failed for " + str(path) + ": " + result.stderr)
+              try:
+                  return json.loads(result.stdout)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit("Invalid ffprobe JSON for " + str(path)) from exc
+
           queue = json.loads(Path("production-queue.json").read_text(encoding="utf-8"))
           for content in queue:
               root = Path("production") / content["content_id"]
               video = root / "video" / "video.mp4"
               audio = root / "audio" / "voice.mp3"
+              subtitles = root / "video" / "scene_subtitles.srt"
               images = sorted((root / "images").glob("scene_*.ppm"))
               if len(images) != len(content["scenes"]):
                   raise SystemExit("Scene image count mismatch: " + content["content_id"])
-              if not audio.is_file() or audio.stat().st_size == 0:
-                  raise SystemExit("Missing spoken audio: " + str(audio))
-              if not video.is_file() or video.stat().st_size == 0:
-                  raise SystemExit("Missing video: " + str(video))
-              probe = subprocess.run(
-                  ["ffprobe", "-v", "error", "-show_entries", "format=format_name,duration",
-                   "-of", "default=noprint_wrappers=1", str(video)],
+              for path, label in ((audio, "spoken audio"), (video, "MP4"), (subtitles, "captions")):
+                  if not path.is_file() or path.stat().st_size == 0:
+                      raise SystemExit("Missing or empty " + label + ": " + str(path))
+
+              video_info = probe(video)
+              streams = video_info.get("streams", [])
+              video_streams = [s for s in streams if s.get("codec_type") == "video"]
+              audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+              if len(video_streams) != 1 or len(audio_streams) != 1:
+                  raise SystemExit("MP4 must contain exactly one video and one audio stream: " + str(video))
+              v = video_streams[0]
+              if (v.get("width"), v.get("height")) != (1920, 1080):
+                  raise SystemExit("Unexpected resolution in " + str(video))
+              fps = v.get("avg_frame_rate", "0/1")
+              numerator, denominator = (int(x) for x in fps.split("/"))
+              if denominator == 0 or abs(numerator / denominator - 25.0) > 0.01:
+                  raise SystemExit("Expected 25 fps in " + str(video))
+              try:
+                  video_duration = float(video_info["format"]["duration"])
+                  audio_duration = float(probe(audio)["format"]["duration"])
+              except (KeyError, TypeError, ValueError) as exc:
+                  raise SystemExit("Missing media duration for " + content["content_id"]) from exc
+              expected_duration = sum(int(scene["duration_seconds"]) for scene in content["scenes"])
+              if abs(video_duration - expected_duration) > 1.25:
+                  raise SystemExit(
+                      f"Video duration mismatch for {content['content_id']}: "
+                      f"{video_duration:.2f}s vs planned {expected_duration}s"
+                  )
+              if audio_duration < 1 or audio_duration > expected_duration + 3:
+                  raise SystemExit("Unexpected narration duration for " + content["content_id"])
+
+              audio_check = subprocess.run(
+                  ["ffmpeg", "-hide_banner", "-i", str(video), "-vn", "-af", "volumedetect",
+                   "-f", "null", "-"],
                   capture_output=True, text=True, check=False,
               )
-              if probe.returncode != 0 or not probe.stdout.strip():
-                  raise SystemExit("ffprobe failed: " + str(video))
-              audio_probe = subprocess.run(
-                  ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                   "-of", "default=noprint_wrappers=1", str(audio)],
-                  capture_output=True, text=True, check=False,
+              volume_text = audio_check.stderr
+              if audio_check.returncode != 0 or "mean_volume: -inf dB" in volume_text:
+                  raise SystemExit("Audio missing or silent in MP4: " + str(video))
+              caption_text = subtitles.read_text(encoding="utf-8").strip()
+              if "-->" not in caption_text or not any(ch.isalpha() for ch in caption_text):
+                  raise SystemExit("Caption file has no timed text: " + str(subtitles))
+              print(
+                  f"PASS {content['content_id']}: {v['width']}x{v['height']} "
+                  f"{fps}fps, {video_duration:.2f}s, audio {audio_duration:.2f}s, captions present"
               )
-              if audio_probe.returncode != 0 or not audio_probe.stdout.strip():
-                  raise SystemExit("Audio ffprobe failed: " + str(audio))
-              print(video, probe.stdout.strip())
-              print(audio, audio_probe.stdout.strip())
           PY
       - name: Write production evidence
         run: |
