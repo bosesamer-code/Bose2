@@ -126,6 +126,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import math
           import subprocess
           from pathlib import Path
 
@@ -173,13 +174,15 @@ jobs:
                   audio_duration = float(probe(audio)["format"]["duration"])
               except (KeyError, TypeError, ValueError) as exc:
                   raise SystemExit("Missing media duration for " + content["content_id"]) from exc
-              expected_duration = sum(int(scene["duration_seconds"]) for scene in content["scenes"])
+              planned_duration = sum(int(scene["duration_seconds"]) for scene in content["scenes"])
+              expected_duration = max(planned_duration, math.ceil(audio_duration))
               if abs(video_duration - expected_duration) > 1.25:
                   raise SystemExit(
                       f"Video duration mismatch for {content['content_id']}: "
-                      f"{video_duration:.2f}s vs planned {expected_duration}s"
+                      f"{video_duration:.2f}s vs expected {expected_duration}s "
+                      f"(planned {planned_duration}s, narration {audio_duration:.2f}s)"
                   )
-              if audio_duration < 1 or audio_duration > expected_duration + 3:
+              if audio_duration < 1 or audio_duration > expected_duration + 0.25:
                   raise SystemExit("Unexpected narration duration for " + content["content_id"])
 
               audio_check = subprocess.run(
