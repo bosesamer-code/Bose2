@@ -287,9 +287,9 @@ class FreeLocalVideoProvider:
             "-movflags", "+faststart", str(output),
         ]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
-            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 30 seconds")
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 60 seconds")
         except (OSError, subprocess.CalledProcessError) as exc:
             return MediaResult(self.name, self.media_type, "failed", [], str(exc))
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
