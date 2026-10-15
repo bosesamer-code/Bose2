@@ -3,10 +3,6 @@ name: test-youtube-upload
 on:
   workflow_dispatch:
     inputs:
-      production_run_id:
-        description: "Enter the numeric GitHub Actions run ID of a successful production-artifact run on main (not the workflow name)"
-        required: true
-        type: number
       confirm_upload:
         description: "I authorize uploading exactly one private test video to the verified target channel"
         required: true
@@ -27,36 +23,79 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate production run ID and origin
+      - name: Find latest successful production run with valid artifact
+        id: resolve
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRODUCTION_RUN_ID: ${{ inputs.production_run_id }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$PRODUCTION_RUN_ID" =~ ^[0-9]+$ ]] || {
-            echo "Invalid production run ID. Enter the numeric Actions run ID, not the workflow name."
-            exit 1
-          }
-          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCTION_RUN_ID")"
-          workflow_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("name", ""))')"
-          workflow_path="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("path", ""))')"
-          event_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("event", ""))')"
-          head_branch="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("head_branch", ""))')"
-          conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion", ""))')"
-          [[ "$workflow_name" == "production-artifact" && "$workflow_path" == ".github/workflows/production-artifact.yml" && "$event_name" != "pull_request" && "$head_branch" == "main" && "$conclusion" == "success" ]] || {
-            echo "Refusing upload: run must be a successful production-artifact run from main."
-            exit 1
-          }
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          workflow_path = ".github/workflows/production-artifact.yml"
+
+          def gh_json(*args):
+              result = subprocess.run(["gh", "api", *args], text=True, capture_output=True)
+              if result.returncode:
+                  print(result.stderr, file=sys.stderr)
+                  raise SystemExit("GitHub API request failed while resolving the production artifact.")
+              return json.loads(result.stdout)
+
+          # GitHub emits one JSON-encoded run per line through --jq.
+          result = subprocess.run(
+              ["gh", "api", "--paginate", "--jq", ".workflow_runs[] | @json",
+               f"repos/{repo}/actions/workflows/production-artifact.yml/runs?branch=main&status=success&per_page=100"],
+              text=True, capture_output=True,
+          )
+          if result.returncode:
+              print(result.stderr, file=sys.stderr)
+              raise SystemExit("Could not list production-artifact runs on main.")
+
+          candidates = []
+          for line in result.stdout.splitlines():
+              try:
+                  run = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if (run.get("name") == "production-artifact"
+                  and run.get("path") == workflow_path
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and run.get("event") != "pull_request"):
+                  candidates.append(run)
+
+          # Runs are newest first. Require the exact, unexpired artifact before selecting.
+          for run in candidates:
+              run_id = int(run["id"])
+              artifacts = gh_json(f"repos/{repo}/actions/runs/{run_id}/artifacts")
+              expected_name = f"queued-production-{run_id}"
+              if any(a.get("name") == expected_name and not a.get("expired", False)
+                     and a.get("size_in_bytes", 0) > 0 for a in artifacts.get("artifacts", [])):
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                      output.write(f"production_run_id={run_id}\n")
+                  print(f"Selected successful production run {run_id} with artifact {expected_name}.")
+                  break
+          else:
+              raise SystemExit(
+                  "No successful production-artifact run on main has a matching, unexpired "
+                  "queued-production artifact. Run the production-artifact workflow successfully first."
+              )
+          PY
       - name: Install YouTube publishing client
         run: |
           python -m pip install --disable-pip-version-check google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
       - name: Download production artifact
         uses: actions/download-artifact@v5
         with:
-          name: queued-production-${{ inputs.production_run_id }}
+          name: queued-production-${{ steps.resolve.outputs.production_run_id }}
           path: published-input
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.production_run_id }}
+          run-id: ${{ steps.resolve.outputs.production_run_id }}
       - name: Validate packages and select one test video
         id: select
         run: |
