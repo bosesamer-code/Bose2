@@ -30,7 +30,8 @@ def main() -> int:
         raise SystemExit("Automatic publishing must remain disabled; refusing upload.")
     if meta.get("owner_controlled") is not True:
         raise SystemExit("Publishing package is not owner-controlled; refusing upload.")
-    if "facebook" not in meta.get("destinations", []):
+    destinations = meta.get("destinations")
+    if not isinstance(destinations, list) or "facebook" not in destinations:
         raise SystemExit("Facebook is not an approved destination for this package.")
 
     page_id = os.getenv("FACEBOOK_PAGE_ID", "").strip()
