@@ -6,10 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-
 # Read access is required for the fail-closed channel identity preflight.
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
@@ -87,6 +83,11 @@ def main() -> int:
         raise SystemExit(f"Missing title in {package}")
     if not isinstance(description, str) or not description.strip():
         raise SystemExit(f"Missing description in {package}")
+
+    # Import network client dependencies only after every local safety check passes.
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
 
     client_id = os.environ["YOUTUBE_CLIENT_ID"]
     client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]
