@@ -89,8 +89,8 @@ jobs:
                   "duration_planned_seconds": duration,
                   "scenes": content["scenes"],
                   "destinations": ["facebook", "youtube"],
-                  "approval": {"required": False, "approved": True},
-                  "automatic_publish": True,
+                  "approval": {"required": True, "approved": False},
+                  "automatic_publish": False,
                   "owner_controlled": True,
                   "artifact": "production/" + content["content_id"] + "/video/video.mp4",
               }
@@ -105,63 +105,130 @@ jobs:
 
               validation = result["production"]["validation"]
               if validation["status"] != "valid":
-                  raise SystemExit(content["content_id"] + ": validation failed")
+                  providers = result["production"].get("providers", [])
+                  details = {
+                      "content_id": content["content_id"],
+                      "validation": validation,
+                      "production_status": result["production"].get("status"),
+                      "providers": [
+                          {
+                              "provider": item.get("provider"),
+                              "media_type": item.get("media_type"),
+                              "status": item.get("status"),
+                              "error": item.get("error"),
+                              "artifacts_count": len(item.get("artifacts", [])),
+                          }
+                          for item in providers
+                      ],
+                  }
+                  print("PRODUCTION_VALIDATION_DIAGNOSTICS=" + json.dumps(details, ensure_ascii=False))
+                  raise SystemExit(content["content_id"] + ": validation failed; see structured diagnostics above")
               if not result["production"]["publish_ready"]:
-                  raise SystemExit(content["content_id"] + ": not publish-ready")
+                  print("PRODUCTION_NOT_READY=" + json.dumps({
+                      "content_id": content["content_id"],
+                      "production": result["production"],
+                  }, ensure_ascii=False))
+                  raise SystemExit(content["content_id"] + ": not publish-ready; see diagnostics above")
               evidence.append({
                   "content_id": content["content_id"],
                   "duration_planned_seconds": duration,
-                  "publish_ready": True,
-                  "automatic_publish": True,
+                  "media_validation_passed": True,
+                  "human_approval_required": True,
+                  "human_approved": False,
+                  "publish_ready": False,
+                  "automatic_publish": False,
               })
 
           Path("production-evidence.json").write_text(
               json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8"
           )
           PY
-      - name: Verify every generated MP4 and spoken audio
+      - name: Verify every generated MP4, spoken audio, and captions
         run: |
           python - <<'PY'
           import json
+          import math
           import subprocess
           from pathlib import Path
+
+          def probe(path):
+              result = subprocess.run(
+                  ["ffprobe", "-v", "error", "-show_streams", "-show_format",
+                   "-of", "json", str(path)],
+                  capture_output=True, text=True, check=False,
+              )
+              if result.returncode:
+                  raise SystemExit("ffprobe failed for " + str(path) + ": " + result.stderr)
+              try:
+                  return json.loads(result.stdout)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit("Invalid ffprobe JSON for " + str(path)) from exc
 
           queue = json.loads(Path("production-queue.json").read_text(encoding="utf-8"))
           for content in queue:
               root = Path("production") / content["content_id"]
               video = root / "video" / "video.mp4"
-              audio = root / "audio" / "voice.wav"
+              audio = root / "audio" / "voice.mp3"
+              subtitles = root / "video" / "scene_subtitles.srt"
               images = sorted((root / "images").glob("scene_*.ppm"))
               if len(images) != len(content["scenes"]):
                   raise SystemExit("Scene image count mismatch: " + content["content_id"])
-              if not audio.is_file() or audio.stat().st_size == 0:
-                  raise SystemExit("Missing spoken audio: " + str(audio))
-              if not video.is_file() or video.stat().st_size == 0:
-                  raise SystemExit("Missing video: " + str(video))
-              probe = subprocess.run(
-                  ["ffprobe", "-v", "error", "-show_entries", "format=format_name,duration",
-                   "-of", "default=noprint_wrappers=1", str(video)],
+              for path, label in ((audio, "spoken audio"), (video, "MP4"), (subtitles, "captions")):
+                  if not path.is_file() or path.stat().st_size == 0:
+                      raise SystemExit("Missing or empty " + label + ": " + str(path))
+
+              video_info = probe(video)
+              streams = video_info.get("streams", [])
+              video_streams = [s for s in streams if s.get("codec_type") == "video"]
+              audio_streams = [s for s in streams if s.get("codec_type") == "audio"]
+              if len(video_streams) != 1 or len(audio_streams) != 1:
+                  raise SystemExit("MP4 must contain exactly one video and one audio stream: " + str(video))
+              v = video_streams[0]
+              if (v.get("width"), v.get("height")) != (1920, 1080):
+                  raise SystemExit("Unexpected resolution in " + str(video))
+              fps = v.get("avg_frame_rate", "0/1")
+              numerator, denominator = (int(x) for x in fps.split("/"))
+              if denominator == 0 or abs(numerator / denominator - 25.0) > 0.01:
+                  raise SystemExit("Expected 25 fps in " + str(video))
+              try:
+                  video_duration = float(video_info["format"]["duration"])
+                  audio_duration = float(probe(audio)["format"]["duration"])
+              except (KeyError, TypeError, ValueError) as exc:
+                  raise SystemExit("Missing media duration for " + content["content_id"]) from exc
+              planned_duration = sum(int(scene["duration_seconds"]) for scene in content["scenes"])
+              expected_duration = max(planned_duration, math.ceil(audio_duration))
+              if abs(video_duration - expected_duration) > 1.25:
+                  raise SystemExit(
+                      f"Video duration mismatch for {content['content_id']}: "
+                      f"{video_duration:.2f}s vs expected {expected_duration}s "
+                      f"(planned {planned_duration}s, narration {audio_duration:.2f}s)"
+                  )
+              if audio_duration < 1 or audio_duration > expected_duration + 0.25:
+                  raise SystemExit("Unexpected narration duration for " + content["content_id"])
+
+              audio_check = subprocess.run(
+                  ["ffmpeg", "-hide_banner", "-i", str(video), "-vn", "-af", "volumedetect",
+                   "-f", "null", "-"],
                   capture_output=True, text=True, check=False,
               )
-              if probe.returncode != 0 or not probe.stdout.strip():
-                  raise SystemExit("ffprobe failed: " + str(video))
-              audio_probe = subprocess.run(
-                  ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                   "-of", "default=noprint_wrappers=1", str(audio)],
-                  capture_output=True, text=True, check=False,
+              volume_text = audio_check.stderr
+              if audio_check.returncode != 0 or "mean_volume: -inf dB" in volume_text:
+                  raise SystemExit("Audio missing or silent in MP4: " + str(video))
+              caption_text = subtitles.read_text(encoding="utf-8").strip()
+              if "-->" not in caption_text or not any(ch.isalpha() for ch in caption_text):
+                  raise SystemExit("Caption file has no timed text: " + str(subtitles))
+              print(
+                  f"PASS {content['content_id']}: {v['width']}x{v['height']} "
+                  f"{fps}fps, {video_duration:.2f}s, audio {audio_duration:.2f}s, captions present"
               )
-              if audio_probe.returncode != 0 or not audio_probe.stdout.strip():
-                  raise SystemExit("Audio ffprobe failed: " + str(audio))
-              print(video, probe.stdout.strip())
-              print(audio, audio_probe.stdout.strip())
           PY
       - name: Write production evidence
         run: |
           mkdir -p production-evidence
           printf '%s\n' "Queued handmade production evidence" > production-evidence/README.txt
           printf '%s\n' "Commit: $GITHUB_SHA" >> production-evidence/README.txt
-          printf '%s\n' "Jobs: 3" >> production-evidence/README.txt
-          printf '%s\n' "Publishing: automatic after successful production and owner authorization" >> production-evidence/README.txt
+          printf '%s\n' "Jobs: $(python -c 'import json; print(len(json.load(open("production-evidence.json", encoding="utf-8"))))')" >> production-evidence/README.txt
+          printf '%s\n' "Publishing: disabled in production workflow; human review and separate explicit upload authorization required" >> production-evidence/README.txt
       - name: Upload queued production artifacts
         uses: actions/upload-artifact@v4
         with:

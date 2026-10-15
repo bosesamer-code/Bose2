@@ -13,6 +13,21 @@ def test_content_catalog_generates_beginner_lesson():
     assert len(lesson["scenes"]) == 4
     assert lesson["scenes"][0]["purpose"] == "hook"
     assert lesson["scenes"][-1]["purpose"] == "cta"
+    assert lesson["learning_goal"]
+    assert "عشر غرز" in lesson["scenes"][1]["text"]
+    assert "عدي الغرز" in lesson["scenes"][2]["text"]
+
+
+def test_each_catalog_topic_has_specific_practical_content():
+    catalog = load_catalog(Path("content/content_catalog.json"))
+    crochet = generate_lesson(catalog, "crochet_basics", 0)
+    product_photo = generate_lesson(catalog, "handmade_business", 0)
+    winter = generate_lesson(catalog, "winter_handmade", 0)
+
+    assert crochet["learning_goal"] != product_photo["learning_goal"]
+    assert "عدسة الموبايل" in product_photo["scenes"][1]["text"]
+    assert "عينة" in winter["scenes"][2]["text"]
+    assert crochet["script"] != product_photo["script"]
 
 
 def test_content_engine_rejects_unknown_topic():

@@ -6,10 +6,21 @@ import math
 import shutil
 import struct
 import subprocess
+import textwrap
 import wave
 from pathlib import Path
 
 from src.media_providers import MediaRequest, MediaResult
+
+
+def _wrap_subtitle_text(text: str, width: int = 34) -> str:
+    """Wrap Arabic captions into readable lines for a 1920x1080 master."""
+    normalized = " ".join(str(text).split())
+    if not normalized:
+        return ""
+    return "\n".join(
+        textwrap.wrap(normalized, width=max(12, width), break_long_words=False, break_on_hyphens=False)
+    )
 
 
 class FreeLocalAudioProvider:
@@ -192,7 +203,30 @@ class FreeLocalVideoProvider:
 
         durations = [max(1, int(scene.get("duration_seconds", 1))) for scene in scenes]
         if len(durations) != len(images):
-            durations = [max(1, int(request.payload.get("duration_seconds", 2))) // len(images)] * len(images)
+            fallback_total = max(len(images), int(request.payload.get("duration_seconds", 2)))
+            durations = [max(1, fallback_total // len(images))] * len(images)
+
+        # Narration length is authoritative: never truncate spoken words to fit
+        # an estimated scene plan. Stretch scene timings proportionally when needed.
+        planned_duration = sum(durations)
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            try:
+                probe = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+                    check=True, capture_output=True, text=True, timeout=15,
+                )
+                narration_duration = float(probe.stdout.strip())
+                if narration_duration <= 0:
+                    raise ValueError("narration duration must be positive")
+                target_duration = max(planned_duration, math.ceil(narration_duration))
+                if target_duration > planned_duration:
+                    scaled = [max(1, int(value * target_duration / planned_duration)) for value in durations]
+                    scaled[-1] += target_duration - sum(scaled)
+                    durations = scaled
+            except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                return MediaResult(self.name, self.media_type, "failed", [], f"Could not validate narration duration: {exc}")
         concat_file = request.output_dir / "scenes.txt"
         lines = []
         for image, duration in zip(images, durations):
@@ -219,7 +253,7 @@ class FreeLocalVideoProvider:
         cursor = 0.0
         for index, scene in enumerate(scenes):
             scene_duration = durations[index] if index < len(durations) else 2
-            caption = str(scene.get("text", "")).strip()
+            caption = _wrap_subtitle_text(str(scene.get("text", "")).strip())
             if caption:
                 subtitle_lines.extend([
                     str(index + 1),
@@ -230,22 +264,32 @@ class FreeLocalVideoProvider:
             cursor += scene_duration
         subtitle_path.write_text("\n".join(subtitle_lines), encoding="utf-8")
 
-        duration = max(2, int(request.payload.get("duration_seconds", sum(durations))))
+        duration = max(2, sum(durations))
         subtitle_filter = (
             f"subtitles='{subtitle_path.resolve()}':"
-            "force_style='FontName=Noto Naskh Arabic,FontSize=22,Outline=2,"
-            "Shadow=1,Alignment=2,MarginV=22'"
+            "force_style='FontName=Noto Naskh Arabic,FontSize=20,BorderStyle=3,Outline=1,"
+            "Shadow=0,BackColour=&H80000000,Alignment=2,MarginV=28'"
+        )
+        # Full-HD delivery master with subtle Ken Burns motion.
+        # This animates illustrated artwork; it is not live-action or a photorealistic presenter.
+        motion_filter = (
+            "fps=25,scale=3840:2160:force_original_aspect_ratio=increase,"
+            "crop=3840:2160,zoompan=z='min(zoom+0.00004,1.06)':"
+            "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,"
+            f"{subtitle_filter},format=yuv420p"
         )
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
-            "-i", str(audio), "-t", str(duration), "-vf", f"{subtitle_filter},fps=25,format=yuv420p",
-            "-map", "0:v:0", "-map", "1:a:0", "-af", "apad", "-c:v", "libx264", "-c:a", "aac",
-            str(output),
+            "-i", str(audio), "-t", str(duration), "-vf", motion_filter,
+            "-map", "0:v:0", "-map", "1:a:0", "-af", "apad",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart", str(output),
         ]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
-            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 30 seconds")
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 60 seconds")
         except (OSError, subprocess.CalledProcessError) as exc:
             return MediaResult(self.name, self.media_type, "failed", [], str(exc))
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
