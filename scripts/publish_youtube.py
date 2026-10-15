@@ -72,6 +72,8 @@ def main() -> int:
         meta = json.loads(package.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"Publishing package cannot be read as JSON: {package} ({exc})")
+    if not isinstance(meta, dict):
+        raise SystemExit("Publishing package must be a JSON object.")
     approval = meta.get("approval")
     if not isinstance(approval, dict) or approval.get("required") is not True:
         raise SystemExit("Publishing package does not require human approval; refusing upload.")
@@ -79,7 +81,8 @@ def main() -> int:
         raise SystemExit("Automatic publishing must remain disabled; refusing upload.")
     if meta.get("owner_controlled") is not True:
         raise SystemExit("Publishing package is not owner-controlled; refusing upload.")
-    if "youtube" not in meta.get("destinations", []):
+    destinations = meta.get("destinations")
+    if not isinstance(destinations, list) or "youtube" not in destinations:
         raise SystemExit("YouTube is not an approved destination for this package.")
     title = meta.get("title")
     description = meta.get("description")
