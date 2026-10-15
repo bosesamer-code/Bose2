@@ -105,9 +105,9 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
 
     monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
     image = tmp_path / "scene_001.ppm"
-    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
-    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
     seen = {}
 
     def fake_ffmpeg(command, **kwargs):
@@ -149,9 +149,9 @@ def test_video_duration_expands_to_preserve_full_narration(tmp_path: Path, monke
 
     monkeypatch.setattr(providers.shutil, "which", which)
     image = tmp_path / "scene_001.ppm"
-    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
-    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
     seen = {}
 
     def fake_run(command, **kwargs):
@@ -190,7 +190,7 @@ def test_image_provider_replaces_stale_corrupt_scene(tmp_path: Path):
     result = FreeLocalImageProvider().generate(MediaRequest("image-retry", tmp_path, {}))
 
     assert result.status == "completed"
-    assert output.read_bytes().startswith(b"P6\\n640 360\\n255\\n")
+    assert output.read_bytes().startswith(b"P6\n640 360\n255\n")
     assert len(output.read_bytes()) > 640 * 360 * 3
 
 
@@ -204,9 +204,9 @@ def test_video_provider_regenerates_existing_stale_output(tmp_path: Path, monkey
         lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
     )
     image = tmp_path / "scene_001.ppm"
-    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
-    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
     output_dir = tmp_path / "out"
     output_dir.mkdir()
     output = output_dir / "video.mp4"
