@@ -50,3 +50,58 @@ def test_factory_creates_one_visual_per_scene_and_blocks_missing_speech(tmp_path
 
     images = sorted((tmp_path / "factory-scene-001" / "images").glob("scene_*.ppm"))
     assert len(images) == 3
+
+
+def test_egyptian_tts_retries_transient_failure_and_succeeds(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+    from src.media_providers import MediaRequest
+
+    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/edge-tts")
+    monkeypatch.setattr(providers.time, "sleep", lambda seconds: None)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1, command, stderr="temporary service connection failure"
+            )
+        output = Path(command[command.index("--write-media") + 1])
+        output.write_bytes(b"x" * 2048)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_run)
+    result = providers.FreeLocalAudioProvider().generate(
+        MediaRequest("tts-retry", tmp_path, {"script": "تجربة صوت عربي"})
+    )
+
+    assert result.status == "completed"
+    assert len(calls) == 2
+    assert Path(result.artifacts[0]).name == "voice.mp3"
+    assert Path(result.artifacts[0]).stat().st_size >= 1024
+
+
+def test_egyptian_tts_reports_last_error_and_never_fakes_speech(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+    from src.media_providers import MediaRequest
+
+    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/edge-tts")
+    monkeypatch.setattr(providers.time, "sleep", lambda seconds: None)
+
+    def fake_run(command, **kwargs):
+        raise subprocess.CalledProcessError(
+            1, command, stderr="service unavailable: temporary upstream error"
+        )
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_run)
+    result = providers.FreeLocalAudioProvider().generate(
+        MediaRequest("tts-fail", tmp_path, {"script": "تجربة صوت عربي"})
+    )
+
+    assert result.status == "failed"
+    assert "after 3 attempts" in result.error
+    assert "service unavailable" in result.error
+    assert result.artifacts == []
+    assert not (tmp_path / "voice.mp3").exists()
