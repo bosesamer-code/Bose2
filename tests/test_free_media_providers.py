@@ -132,6 +132,9 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     assert result.status == "completed"
     assert "s=1920x1080" in command[command.index("-vf") + 1]
     assert "zoompan" in command[command.index("-vf") + 1]
+    video_filter = command[command.index("-vf") + 1]
+    assert "FontSize=20" in video_filter
+    assert "MarginV=28" in video_filter
     assert "-crf" in command and "18" in command
     assert Path(result.artifacts[0]).is_file()
 
