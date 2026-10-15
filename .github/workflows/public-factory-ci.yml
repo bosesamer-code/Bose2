@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update -o Acquire::Retries=2
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
       - name: Compile
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests scripts
       - name: Test
         run: python -m pytest -q
       - name: Secret filename check
