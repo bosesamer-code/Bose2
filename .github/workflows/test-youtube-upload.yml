@@ -4,10 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       production_run_id:
-        description: "Successful production-artifact run ID"
+        description: "Enter the numeric GitHub Actions run ID of a successful production-artifact run on main (not the workflow name)"
         required: true
-        type: string
-        # No stale default: the operator must choose the exact successful production run.
+        type: number
       confirm_upload:
         description: "I authorize uploading exactly one private test video to the verified target channel"
         required: true
@@ -35,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$PRODUCTION_RUN_ID" =~ ^[0-9]+$ ]] || {
-            echo "Production run ID must contain digits only."
+            echo "Invalid production run ID. Enter the numeric Actions run ID, not the workflow name."
             exit 1
           }
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCTION_RUN_ID")"
