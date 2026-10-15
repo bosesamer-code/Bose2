@@ -40,7 +40,7 @@ def test_youtube_confirmation_still_checks_local_video_before_network():
         "UPLOAD_ONE_PRIVATE_TEST_VIDEO",
     )
     assert result.returncode != 0
-    assert "Video file is missing or empty" in result.stderr
+    assert "Video file is missing, empty, or not an MP4" in result.stderr
     assert "ModuleNotFoundError" not in result.stderr
 
 
