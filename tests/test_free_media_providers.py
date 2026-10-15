@@ -112,7 +112,7 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
 
     def fake_ffmpeg(command, **kwargs):
         seen["command"] = command
-        Path(command[-1]).write_bytes(b"fake mp4")
+        Path(command[-1]).write_bytes(b"fake mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(providers.subprocess, "run", fake_ffmpeg)
@@ -158,7 +158,7 @@ def test_video_duration_expands_to_preserve_full_narration(tmp_path: Path, monke
         if command[0].endswith("ffprobe"):
             return subprocess.CompletedProcess(command, 0, "6.2", "")
         seen["command"] = command
-        Path(command[-1]).write_bytes(b"fake mp4")
+        Path(command[-1]).write_bytes(b"fake mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(providers.subprocess, "run", fake_run)
