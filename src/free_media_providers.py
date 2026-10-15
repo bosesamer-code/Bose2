@@ -372,11 +372,12 @@ class FreeLocalVideoProvider:
                 if not generated:
                     raise RuntimeError("SadTalker completed without producing an MP4 file.")
                 presenter_video = generated[0]
-                broll_dir = Path(os.environ.get("CROCHET_BROLL_DIR", "").strip()).expanduser()
+                broll_dir_value = os.environ.get("CROCHET_BROLL_DIR", "").strip()
+                broll_dir = Path(broll_dir_value).expanduser() if broll_dir_value else None
                 broll_clips = sorted(
                     p.resolve() for p in broll_dir.glob("*")
-                    if broll_dir.is_dir() and p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"}
-                ) if str(broll_dir) else []
+                    if p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"}
+                ) if broll_dir is not None and broll_dir.is_dir() else []
                 concat_segments = []
                 cursor = 0.0
                 broll_index = 0
