@@ -12,6 +12,8 @@ def test_free_local_audio_provider_creates_real_egyptian_speech(tmp_path: Path, 
 
     def fake_tts(command, **kwargs):
         assert "ar-EG-SalmaNeural" in command
+    assert command[command.index("--rate") + 1] == "-8%"
+    assert command[command.index("--pitch") + 1] == "+1Hz"
         output = Path(command[command.index("--write-media") + 1])
         output.write_bytes(b"ID3" + b"\x00" * 1500)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -137,6 +139,9 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     assert result.status == "completed"
     assert "s=1920x1080" in command[command.index("-vf") + 1]
     assert "zoompan" in command[command.index("-vf") + 1]
+    assert "zoom+0.00012" in command[command.index("-vf") + 1]
+    assert "loudnorm=I=-16" in command[command.index("-af") + 1]
+    assert "acompressor=" in command[command.index("-af") + 1]
     video_filter = command[command.index("-vf") + 1]
     assert "FontSize=20" in video_filter
     assert "MarginV=28" in video_filter
