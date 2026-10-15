@@ -65,11 +65,15 @@ def main() -> int:
 
     video = Path(sys.argv[1])
     package = Path(sys.argv[2])
-    if not video.is_file() or video.stat().st_size == 0:
-        raise SystemExit(f"Video file is missing or empty: {video}")
+    if not video.is_file() or video.stat().st_size == 0 or video.suffix.lower() != ".mp4":
+        raise SystemExit(f"Video file is missing, empty, or not an MP4: {video}")
 
-    meta = json.loads(package.read_text(encoding="utf-8"))
-    if meta.get("approval", {}).get("required") is not True:
+    try:
+        meta = json.loads(package.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Publishing package cannot be read as JSON: {package} ({exc})")
+    approval = meta.get("approval")
+    if not isinstance(approval, dict) or approval.get("required") is not True:
         raise SystemExit("Publishing package does not require human approval; refusing upload.")
     if meta.get("automatic_publish") is not False:
         raise SystemExit("Automatic publishing must remain disabled; refusing upload.")
@@ -83,6 +87,13 @@ def main() -> int:
         raise SystemExit(f"Missing title in {package}")
     if not isinstance(description, str) or not description.strip():
         raise SystemExit(f"Missing description in {package}")
+
+    missing_credentials = [
+        key for key in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
+        if not os.getenv(key, "").strip()
+    ]
+    if missing_credentials:
+        raise SystemExit("Missing required YouTube credential environment variables: " + ", ".join(missing_credentials))
 
     # Import network client dependencies only after every local safety check passes.
     from google.oauth2.credentials import Credentials
