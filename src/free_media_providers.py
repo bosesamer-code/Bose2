@@ -46,7 +46,7 @@ class FreeLocalAudioProvider:
 
         command = [
             edge_tts, "--voice", "ar-EG-SalmaNeural",
-            "--rate", "+0%", "--text", script, "--write-media", str(output),
+            "--rate", "-8%", "--pitch", "+1Hz", "--volume", "+0%", "--text", script, "--write-media", str(output),
         ]
         # The hosted speech service can fail transiently. Retry a few times,
         # but never replace missing speech with silence or a synthetic tone.
@@ -117,23 +117,49 @@ class FreeLocalImageProvider:
             cls._circle(buf, width, height, x, y, thickness, rgb)
 
     @classmethod
-    def _avatar(cls, buf: bytearray, width: int, height: int) -> None:
-        """A consistent friendly illustrated host, repeated in every scene."""
+    def _avatar(cls, buf: bytearray, width: int, height: int, pose: int = 0) -> None:
+        """Draw a prominent illustrated female presenter with scene-specific teaching gestures."""
         skin = (235, 177, 139)
         hair = (65, 43, 36)
         shirt = (112, 72, 133)
         outline = (65, 43, 52)
-        cls._fill_rect(buf, width, height, 55, 220, 190, 335, shirt)
-        cls._circle(buf, width, height, 122, 158, 65, hair)
-        cls._circle(buf, width, height, 122, 166, 48, skin)
-        cls._circle(buf, width, height, 91, 130, 27, hair)
-        cls._circle(buf, width, height, 151, 132, 26, hair)
-        cls._fill_rect(buf, width, height, 73, 124, 170, 145, hair)
-        cls._line(buf, width, height, 91, 156, 104, 156, outline, 3)
-        cls._line(buf, width, height, 139, 156, 152, 156, outline, 3)
-        cls._line(buf, width, height, 104, 183, 122, 190, (155, 65, 68), 3)
-        cls._line(buf, width, height, 122, 190, 140, 183, (155, 65, 68), 3)
-        cls._fill_rect(buf, width, height, 104, 222, 140, 244, (246, 230, 218))
+        cream = (255, 244, 226)
+
+        # Upper body and shoulders are intentionally larger so the host reads clearly on mobile.
+        cls._fill_rect(buf, width, height, 48, 220, 210, 360, shirt)
+        cls._fill_rect(buf, width, height, 102, 202, 158, 236, skin)
+
+        # Scene-dependent arm gestures: welcoming, explaining, demonstrating, and inviting.
+        gestures = [
+            ((75, 250), (34, 207)),
+            ((72, 252), (27, 286)),
+            ((184, 250), (236, 210)),
+            ((184, 252), (239, 286)),
+        ]
+        for shoulder, hand in (gestures[pose % len(gestures)],):
+            cls._line(buf, width, height, shoulder[0], shoulder[1], hand[0], hand[1], skin, 12)
+            cls._circle(buf, width, height, hand[0], hand[1], 13, skin)
+        other_shoulder = (184, 250) if pose % 2 == 0 else (75, 250)
+        other_hand = (239, 286) if pose % 2 == 0 else (27, 207)
+        cls._line(buf, width, height, other_shoulder[0], other_shoulder[1], other_hand[0], other_hand[1], shirt, 14)
+        cls._circle(buf, width, height, other_hand[0], other_hand[1], 10, skin)
+
+        # Hair silhouette, face, fringe, eyes, and a friendly smile.
+        cls._circle(buf, width, height, 130, 145, 76, hair)
+        cls._circle(buf, width, height, 130, 158, 55, skin)
+        cls._circle(buf, width, height, 77, 160, 12, skin)
+        cls._circle(buf, width, height, 183, 160, 12, skin)
+        cls._fill_rect(buf, width, height, 76, 112, 184, 139, hair)
+        cls._circle(buf, width, height, 92, 127, 24, hair)
+        cls._circle(buf, width, height, 167, 126, 25, hair)
+        cls._circle(buf, width, height, 110, 157, 5, outline)
+        cls._circle(buf, width, height, 150, 157, 5, outline)
+        cls._line(buf, width, height, 108, 181, 130, 191, (155, 65, 68), 3)
+        cls._line(buf, width, height, 130, 191, 152, 181, (155, 65, 68), 3)
+
+        # Simple collar detail makes the presenter distinct from the props.
+        cls._line(buf, width, height, 103, 224, 130, 246, cream, 5)
+        cls._line(buf, width, height, 157, 224, 130, 246, cream, 5)
 
     @classmethod
     def _yarn_and_crochet(cls, buf: bytearray, width: int, height: int, variant: int) -> None:
@@ -164,7 +190,7 @@ class FreeLocalImageProvider:
         bg_color = palettes.get(purpose, (246, 244, 237))
         bg = bytearray(bytes(bg_color) * (width * height))
         cls._fill_rect(bg, width, height, 0, 0, width, 38, (75, 56, 75))
-        cls._avatar(bg, width, height)
+        cls._avatar(bg, width, height, scene_number - 1)
         cls._yarn_and_crochet(bg, width, height, scene_number)
         accents = {"hook": (205, 91, 116), "lesson": (74, 139, 157), "application": (224, 167, 77), "cta": (112, 72, 133)}
         accent = accents.get(purpose, (112, 72, 133))
@@ -302,14 +328,15 @@ class FreeLocalVideoProvider:
         # This animates illustrated artwork; it is not live-action or a photorealistic presenter.
         motion_filter = (
             "fps=25,scale=3840:2160:force_original_aspect_ratio=increase,"
-            "crop=3840:2160,zoompan=z='min(zoom+0.00004,1.06)':"
+            "crop=3840:2160,zoompan=z='min(zoom+0.00012,1.12)':"
             "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,"
             f"{subtitle_filter},format=yuv420p"
         )
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
             "-i", str(audio), "-t", str(duration), "-vf", motion_filter,
-            "-map", "0:v:0", "-map", "1:a:0", "-af", "apad",
+            "-map", "0:v:0", "-map", "1:a:0", "-af",
+            "loudnorm=I=-16:TP=-1.5:LRA=11,acompressor=threshold=-18dB:ratio=2:attack=20:release=250,apad",
             "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart", str(output),
