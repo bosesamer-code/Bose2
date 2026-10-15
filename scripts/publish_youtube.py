@@ -6,10 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-
 # Read access is required for the fail-closed channel identity preflight.
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
@@ -64,18 +60,48 @@ def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("Usage: publish_youtube.py VIDEO.mp4 publishing_package.json")
 
+    if os.getenv("YOUTUBE_UPLOAD_CONFIRMATION") != "UPLOAD_ONE_PRIVATE_TEST_VIDEO":
+        raise SystemExit("Missing explicit one-video private-upload confirmation; refusing upload.")
+
     video = Path(sys.argv[1])
     package = Path(sys.argv[2])
-    if not video.is_file() or video.stat().st_size == 0:
-        raise SystemExit(f"Video file is missing or empty: {video}")
+    if not video.is_file() or video.stat().st_size == 0 or video.suffix.lower() != ".mp4":
+        raise SystemExit(f"Video file is missing, empty, or not an MP4: {video}")
 
-    meta = json.loads(package.read_text(encoding="utf-8"))
+    try:
+        meta = json.loads(package.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Publishing package cannot be read as JSON: {package} ({exc})")
+    if not isinstance(meta, dict):
+        raise SystemExit("Publishing package must be a JSON object.")
+    approval = meta.get("approval")
+    if not isinstance(approval, dict) or approval.get("required") is not True:
+        raise SystemExit("Publishing package does not require human approval; refusing upload.")
+    if meta.get("automatic_publish") is not False:
+        raise SystemExit("Automatic publishing must remain disabled; refusing upload.")
+    if meta.get("owner_controlled") is not True:
+        raise SystemExit("Publishing package is not owner-controlled; refusing upload.")
+    destinations = meta.get("destinations")
+    if not isinstance(destinations, list) or "youtube" not in destinations:
+        raise SystemExit("YouTube is not an approved destination for this package.")
     title = meta.get("title")
     description = meta.get("description")
     if not isinstance(title, str) or not title.strip():
         raise SystemExit(f"Missing title in {package}")
     if not isinstance(description, str) or not description.strip():
         raise SystemExit(f"Missing description in {package}")
+
+    missing_credentials = [
+        key for key in ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
+        if not os.getenv(key, "").strip()
+    ]
+    if missing_credentials:
+        raise SystemExit("Missing required YouTube credential environment variables: " + ", ".join(missing_credentials))
+
+    # Import network client dependencies only after every local safety check passes.
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
 
     client_id = os.environ["YOUTUBE_CLIENT_ID"]
     client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]

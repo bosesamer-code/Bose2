@@ -103,16 +103,21 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     import src.free_media_providers as providers
     from src.free_media_providers import FreeLocalVideoProvider
 
-    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
+    monkeypatch.setattr(
+        providers.shutil, "which",
+        lambda name: f"/usr/bin/{name}" if name in {"ffmpeg", "ffprobe"} else None,
+    )
     image = tmp_path / "scene_001.ppm"
-    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
-    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
     seen = {}
 
     def fake_ffmpeg(command, **kwargs):
+        if command[0].endswith("ffprobe"):
+            return subprocess.CompletedProcess(command, 0, "3.0", "")
         seen["command"] = command
-        Path(command[-1]).write_bytes(b"fake mp4")
+        Path(command[-1]).write_bytes(b"fake mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(providers.subprocess, "run", fake_ffmpeg)
@@ -149,16 +154,16 @@ def test_video_duration_expands_to_preserve_full_narration(tmp_path: Path, monke
 
     monkeypatch.setattr(providers.shutil, "which", which)
     image = tmp_path / "scene_001.ppm"
-    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
-    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
     seen = {}
 
     def fake_run(command, **kwargs):
         if command[0].endswith("ffprobe"):
             return subprocess.CompletedProcess(command, 0, "6.2", "")
         seen["command"] = command
-        Path(command[-1]).write_bytes(b"fake mp4")
+        Path(command[-1]).write_bytes(b"fake mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(providers.subprocess, "run", fake_run)
@@ -180,3 +185,59 @@ def test_video_duration_expands_to_preserve_full_narration(tmp_path: Path, monke
     assert command[command.index("-t") + 1] == "7"
     subtitle_text = (tmp_path / "out" / "scene_subtitles.srt").read_text(encoding="utf-8")
     assert "00:00:00,000 --> 00:00:07,000" in subtitle_text
+
+
+def test_image_provider_replaces_stale_corrupt_scene(tmp_path: Path):
+    output = tmp_path / "scene_001.ppm"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(b"partial previous render")
+
+    result = FreeLocalImageProvider().generate(MediaRequest("image-retry", tmp_path, {}))
+
+    assert result.status == "completed"
+    assert output.read_bytes().startswith(b"P6\n640 360\n255\n")
+    assert len(output.read_bytes()) > 640 * 360 * 3
+
+
+def test_video_provider_regenerates_existing_stale_output(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+    from src.free_media_providers import FreeLocalVideoProvider
+
+    monkeypatch.setattr(
+        providers.shutil, "which",
+        lambda name: f"/usr/bin/{name}" if name in {"ffmpeg", "ffprobe"} else None,
+    )
+    image = tmp_path / "scene_001.ppm"
+    image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
+    audio = tmp_path / "voice.mp3"
+    audio.write_bytes(b"ID3" + b"\x00" * 20)
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    output = output_dir / "video.mp4"
+    output.write_bytes(b"partial stale video")
+    calls = []
+
+    def fake_ffmpeg(command, **kwargs):
+        if command[0].endswith("ffprobe"):
+            return subprocess.CompletedProcess(command, 0, "2.0", "")
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"regenerated mp4 " + b"x" * 2048)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_ffmpeg)
+    result = FreeLocalVideoProvider().generate(
+        MediaRequest(
+            "video-retry", output_dir,
+            {
+                "image_paths": [str(image)],
+                "audio_path": str(audio),
+                "duration_seconds": 2,
+                "scene_plan": [{"scene": 1, "purpose": "lesson", "text": "خطوة", "duration_seconds": 2}],
+            },
+        )
+    )
+
+    assert result.status == "completed"
+    assert len(calls) == 1
+    assert output.read_bytes().startswith(b"regenerated mp4")

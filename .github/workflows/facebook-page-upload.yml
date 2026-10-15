@@ -1,0 +1,130 @@
+name: facebook-page-upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_run_id:
+        description: "Successful production-artifact run ID from main"
+        required: true
+        type: string
+      content_id:
+        description: "Exact content_id to publish (one video only)"
+        required: true
+        type: string
+      confirm_publication:
+        description: "I reviewed this video and authorize publishing it publicly to the Facebook Page"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish-one:
+    if: ${{ inputs.confirm_publication == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate production run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRODUCTION_RUN_ID: ${{ inputs.production_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo "Production run ID must contain digits only."
+            exit 1
+          }
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCTION_RUN_ID")"
+          workflow_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("name", ""))')"
+          workflow_path="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("path", ""))')"
+          event_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("event", ""))')"
+          head_branch="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("head_branch", ""))')"
+          conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion", ""))')"
+          [[ "$workflow_name" == "production-artifact" && "$workflow_path" == ".github/workflows/production-artifact.yml" && "$event_name" != "pull_request" && "$head_branch" == "main" && "$conclusion" == "success" ]] || {
+            echo "Refusing publication: run must be successful production-artifact from main."
+            exit 1
+          }
+
+      - name: Download production artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: queued-production-${{ inputs.production_run_id }}
+          path: published-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.production_run_id }}
+
+      - name: Validate and select exactly one package
+        id: select
+        env:
+          CONTENT_ID: ${{ inputs.content_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          content_id = os.environ["CONTENT_ID"].strip()
+          if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", content_id):
+              raise SystemExit("Invalid content_id format.")
+          matches = [
+              p for p in Path("published-input/production").glob("*/publishing_package.json")
+              if p.parent.name == content_id
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one package for {content_id}; found {len(matches)}.")
+          package = matches[0]
+          video = package.parent / "video" / "video.mp4"
+          metadata = json.loads(package.read_text(encoding="utf-8"))
+          if not video.is_file() or video.stat().st_size == 0:
+              raise SystemExit("Selected video is missing or empty.")
+          if not isinstance(metadata.get("title"), str) or not metadata["title"].strip():
+              raise SystemExit("Package title is missing.")
+          if not isinstance(metadata.get("description"), str) or not metadata["description"].strip():
+              raise SystemExit("Package description is missing.")
+          if metadata.get("approval", {}).get("required") is not True:
+              raise SystemExit("Package must require human approval.")
+          if metadata.get("automatic_publish") is not False:
+              raise SystemExit("Automatic publishing must remain disabled.")
+          if metadata.get("owner_controlled") is not True:
+              raise SystemExit("Package must be owner-controlled.")
+          if "facebook" not in metadata.get("destinations", []):
+              raise SystemExit("Facebook is not an approved destination.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"package={package}\n")
+              out.write(f"video={video}\n")
+          print(f"Validated one Facebook package: {content_id}")
+          PY
+
+      - name: Verify Facebook credentials are configured
+        env:
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ -n "$FACEBOOK_PAGE_ID" && -n "$FACEBOOK_PAGE_ACCESS_TOKEN" ]] || {
+            echo "Facebook Page credentials are not configured; no upload was attempted."
+            exit 1
+          }
+
+      - name: Install Facebook publishing dependency
+        run: python -m pip install --disable-pip-version-check "requests>=2.32,<3"
+
+      - name: Publish exactly one reviewed video to the Facebook Page
+        env:
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          FACEBOOK_GRAPH_VERSION: v26.0
+          FACEBOOK_PUBLISH_CONFIRMATION: I_APPROVE_FACEBOOK_PAGE_PUBLICATION
+        run: |
+          set -euo pipefail
+          python scripts/publish_facebook.py "${{ steps.select.outputs.video }}" "${{ steps.select.outputs.package }}"

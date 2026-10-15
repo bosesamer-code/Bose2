@@ -7,6 +7,7 @@ import shutil
 import struct
 import subprocess
 import textwrap
+import time
 import wave
 from pathlib import Path
 
@@ -47,15 +48,39 @@ class FreeLocalAudioProvider:
             edge_tts, "--voice", "ar-EG-SalmaNeural",
             "--rate", "+0%", "--text", script, "--write-media", str(output),
         ]
-        try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=90)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # The hosted speech service can fail transiently. Retry a few times,
+        # but never replace missing speech with silence or a synthetic tone.
+        last_error = "unknown TTS error"
+        for attempt in range(3):
             output.unlink(missing_ok=True)
-            return MediaResult(self.name, self.media_type, "failed", [], f"Egyptian Arabic TTS failed: {exc}")
+            try:
+                subprocess.run(
+                    command, check=True, capture_output=True, text=True, timeout=45
+                )
+                if output.is_file() and output.stat().st_size >= 1024:
+                    break
+                last_error = "TTS output is missing or too small"
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or exc.stdout or "").strip()
+                last_error = (
+                    f"exit code {exc.returncode}: {detail[-1200:]}"
+                    if detail else f"exit code {exc.returncode}; no stderr/stdout returned"
+                )
+            except subprocess.TimeoutExpired:
+                last_error = "request timed out after 45 seconds"
+            except OSError as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
 
         if not output.is_file() or output.stat().st_size < 1024:
             output.unlink(missing_ok=True)
-            return MediaResult(self.name, self.media_type, "failed", [], "TTS output is missing or too small")
+            return MediaResult(
+                self.name, self.media_type, "failed", [],
+                f"Egyptian Arabic TTS failed after 3 attempts: {last_error}",
+            )
+
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
@@ -161,9 +186,8 @@ class FreeLocalImageProvider:
             number = int(scene.get("scene", len(artifacts) + 1))
             purpose = str(scene.get("purpose", "lesson"))
             output = request.output_dir / f"scene_{number:03d}.ppm"
-            if output.exists():
-                artifacts.append(str(output))
-                continue
+            # Regenerate deterministically instead of trusting stale/corrupt files
+            # left by an interrupted previous attempt.
             pixels = self._draw_visual(width, height, number, purpose, scene)
             with output.open("wb") as fh:
                 fh.write(f"P6\n{width} {height}\n255\n".encode())
@@ -189,8 +213,8 @@ class FreeLocalVideoProvider:
     def generate(self, request: MediaRequest) -> MediaResult:
         request.output_dir.mkdir(parents=True, exist_ok=True)
         output = request.output_dir / "video.mp4"
-        if output.exists():
-            return MediaResult(self.name, self.media_type, "completed", [str(output)])
+        # Never mark a previous partial/corrupt MP4 as completed on rerun.
+        output.unlink(missing_ok=True)
 
         ffmpeg = shutil.which("ffmpeg")
         images = list(request.payload.get("image_paths", []))
@@ -210,23 +234,27 @@ class FreeLocalVideoProvider:
         # an estimated scene plan. Stretch scene timings proportionally when needed.
         planned_duration = sum(durations)
         ffprobe = shutil.which("ffprobe")
-        if ffprobe:
-            try:
-                probe = subprocess.run(
-                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
-                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
-                    check=True, capture_output=True, text=True, timeout=15,
-                )
-                narration_duration = float(probe.stdout.strip())
-                if narration_duration <= 0:
-                    raise ValueError("narration duration must be positive")
-                target_duration = max(planned_duration, math.ceil(narration_duration))
-                if target_duration > planned_duration:
-                    scaled = [max(1, int(value * target_duration / planned_duration)) for value in durations]
-                    scaled[-1] += target_duration - sum(scaled)
-                    durations = scaled
-            except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                return MediaResult(self.name, self.media_type, "failed", [], f"Could not validate narration duration: {exc}")
+        if not ffprobe:
+            return MediaResult(
+                self.name, self.media_type, "not_configured", [],
+                "ffprobe is required to measure narration duration safely; install ffmpeg/ffprobe",
+            )
+        try:
+            probe = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+                check=True, capture_output=True, text=True, timeout=15,
+            )
+            narration_duration = float(probe.stdout.strip())
+            if narration_duration <= 0:
+                raise ValueError("narration duration must be positive")
+            target_duration = max(planned_duration, math.ceil(narration_duration))
+            if target_duration > planned_duration:
+                scaled = [max(1, int(value * target_duration / planned_duration)) for value in durations]
+                scaled[-1] += target_duration - sum(scaled)
+                durations = scaled
+        except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            return MediaResult(self.name, self.media_type, "failed", [], f"Could not validate narration duration: {exc}")
         concat_file = request.output_dir / "scenes.txt"
         lines = []
         for image, duration in zip(images, durations):
@@ -289,9 +317,21 @@ class FreeLocalVideoProvider:
         try:
             subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
+            output.unlink(missing_ok=True)
             return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 60 seconds")
-        except (OSError, subprocess.CalledProcessError) as exc:
-            return MediaResult(self.name, self.media_type, "failed", [], str(exc))
+        except subprocess.CalledProcessError as exc:
+            output.unlink(missing_ok=True)
+            detail = (exc.stderr or exc.stdout or "").strip()
+            message = f"ffmpeg exited with code {exc.returncode}"
+            if detail:
+                message += f": {detail[-1200:]}"
+            return MediaResult(self.name, self.media_type, "failed", [], message)
+        except OSError as exc:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], f"{type(exc).__name__}: {exc}")
+        if not output.is_file() or output.stat().st_size < 1024:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg returned success but MP4 output is missing or too small")
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
