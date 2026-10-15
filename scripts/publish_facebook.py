@@ -36,7 +36,10 @@ def main() -> int:
         response = requests.post(url, data={"access_token":token,"title":meta["title"],"description":meta["description"]}, files={"source":(video.name,fh,"video/mp4")}, timeout=300)
     response.raise_for_status()
     data = response.json()
-    print(json.dumps({"destination":"facebook","status":"published","video_id":data.get("id")}, ensure_ascii=False))
+    video_id = data.get("id")
+    if not video_id:
+        raise SystemExit("Facebook response did not include a video ID; inspect the Page before retrying.")
+    print(json.dumps({"destination":"facebook","status":"published","video_id":video_id}, ensure_ascii=False))
     return 0
 
 if __name__ == "__main__": raise SystemExit(main())
