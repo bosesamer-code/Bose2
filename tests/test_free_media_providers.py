@@ -103,7 +103,10 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     import src.free_media_providers as providers
     from src.free_media_providers import FreeLocalVideoProvider
 
-    monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None)
+    monkeypatch.setattr(
+        providers.shutil, "which",
+        lambda name: f"/usr/bin/{name}" if name in {"ffmpeg", "ffprobe"} else None,
+    )
     image = tmp_path / "scene_001.ppm"
     image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
     audio = tmp_path / "voice.mp3"
@@ -111,6 +114,8 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     seen = {}
 
     def fake_ffmpeg(command, **kwargs):
+        if command[0].endswith("ffprobe"):
+            return subprocess.CompletedProcess(command, 0, "3.0", "")
         seen["command"] = command
         Path(command[-1]).write_bytes(b"fake mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -201,7 +206,7 @@ def test_video_provider_regenerates_existing_stale_output(tmp_path: Path, monkey
 
     monkeypatch.setattr(
         providers.shutil, "which",
-        lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
+        lambda name: f"/usr/bin/{name}" if name in {"ffmpeg", "ffprobe"} else None,
     )
     image = tmp_path / "scene_001.ppm"
     image.write_bytes(b"P6\n1 1\n255\n" + bytes([1, 2, 3]))
@@ -214,6 +219,8 @@ def test_video_provider_regenerates_existing_stale_output(tmp_path: Path, monkey
     calls = []
 
     def fake_ffmpeg(command, **kwargs):
+        if command[0].endswith("ffprobe"):
+            return subprocess.CompletedProcess(command, 0, "2.0", "")
         calls.append(command)
         Path(command[-1]).write_bytes(b"regenerated mp4 " + b"x" * 2048)
         return subprocess.CompletedProcess(command, 0, "", "")
