@@ -7,7 +7,7 @@ on:
         description: "Successful production-artifact run ID"
         required: true
         type: string
-        default: "38196244470"
+        # No stale default: the operator must choose the exact successful production run.
       confirm_upload:
         description: "I authorize uploading exactly one private test video to the verified target channel"
         required: true
