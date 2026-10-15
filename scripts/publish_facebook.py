@@ -2,7 +2,6 @@
 from __future__ import annotations
 import json, os, sys
 from pathlib import Path
-import requests
 
 def main() -> int:
     if len(sys.argv) != 3:
@@ -32,6 +31,8 @@ def main() -> int:
     token = os.environ["FACEBOOK_PAGE_ACCESS_TOKEN"]
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
     url = f"https://graph.facebook.com/{version}/{page_id}/videos"
+    import requests
+
     with video.open("rb") as fh:
         response = requests.post(url, data={"access_token":token,"title":meta["title"],"description":meta["description"]}, files={"source":(video.name,fh,"video/mp4")}, timeout=300)
     response.raise_for_status()
