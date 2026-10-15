@@ -4,16 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 2 * * *"
-  pull_request:
-    types: [opened, synchronize]
 
 permissions:
   contents: read
-
-# A newer commit supersedes an older PR production attempt; avoid duplicate TTS calls.
-concurrency:
-  group: production-artifact-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   production:
