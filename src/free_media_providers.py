@@ -267,8 +267,8 @@ class FreeLocalVideoProvider:
         duration = max(2, sum(durations))
         subtitle_filter = (
             f"subtitles='{subtitle_path.resolve()}':"
-            "force_style='FontName=Noto Naskh Arabic,FontSize=34,BorderStyle=3,Outline=1,"
-            "Shadow=0,BackColour=&H80000000,Alignment=2,MarginV=64'"
+            "force_style='FontName=Noto Naskh Arabic,FontSize=26,BorderStyle=3,Outline=1,"
+            "Shadow=0,BackColour=&H80000000,Alignment=2,MarginV=48'"
         )
         # Full-HD delivery master with subtle Ken Burns motion.
         # This animates illustrated artwork; it is not live-action or a photorealistic presenter.
