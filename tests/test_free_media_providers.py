@@ -12,8 +12,8 @@ def test_free_local_audio_provider_creates_real_egyptian_speech(tmp_path: Path, 
 
     def fake_tts(command, **kwargs):
         assert "ar-EG-SalmaNeural" in command
-    assert command[command.index("--rate") + 1] == "-8%"
-    assert command[command.index("--pitch") + 1] == "+1Hz"
+        assert command[command.index("--rate") + 1] == "-8%"
+        assert command[command.index("--pitch") + 1] == "+1Hz"
         output = Path(command[command.index("--write-media") + 1])
         output.write_bytes(b"ID3" + b"\x00" * 1500)
         return subprocess.CompletedProcess(command, 0, "", "")
