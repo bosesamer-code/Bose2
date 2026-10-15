@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import shutil
 import struct
 import subprocess
@@ -332,6 +333,68 @@ class FreeLocalVideoProvider:
             "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,"
             f"{subtitle_filter},format=yuv420p"
         )
+        # Optional realistic talking presenter. This is opt-in and requires a separately
+        # installed SadTalker checkout/model weights plus an owned or licensed portrait.
+        sadtalker_dir = os.environ.get("SADTALKER_DIR", "").strip()
+        presenter_image = os.environ.get("SADTALKER_SOURCE_IMAGE", "").strip()
+        if sadtalker_dir or presenter_image:
+            if not sadtalker_dir or not presenter_image:
+                return MediaResult(
+                    self.name, self.media_type, "not_configured", [],
+                    "Set both SADTALKER_DIR and SADTALKER_SOURCE_IMAGE to enable a talking presenter.",
+                )
+            sadtalker_root = Path(sadtalker_dir).expanduser().resolve()
+            portrait = Path(presenter_image).expanduser().resolve()
+            inference_script = sadtalker_root / "inference.py"
+            if not inference_script.is_file() or not portrait.is_file():
+                return MediaResult(
+                    self.name, self.media_type, "not_configured", [],
+                    "SadTalker inference.py or the configured presenter portrait was not found.",
+                )
+            python_executable = os.environ.get("SADTALKER_PYTHON", "").strip() or shutil.which("python") or "python"
+            wav_audio = request.output_dir / "sadtalker_input.wav"
+            result_dir = request.output_dir / "sadtalker_results"
+            result_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                subprocess.run(
+                    [ffmpeg, "-y", "-i", str(audio), "-vn", "-ac", "1", "-ar", "16000", str(wav_audio)],
+                    check=True, capture_output=True, text=True, timeout=60,
+                )
+                subprocess.run(
+                    [python_executable, str(inference_script), "--driven_audio", str(wav_audio),
+                     "--source_image", str(portrait), "--result_dir", str(result_dir),
+                     "--still", "--preprocess", "full", "--enhancer", "gfpgan"],
+                    check=True, capture_output=True, text=True, timeout=max(300, duration * 30),
+                )
+                generated = sorted(result_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if not generated:
+                    raise RuntimeError("SadTalker completed without producing an MP4 file.")
+                presenter_video = generated[0]
+                presenter_filter = (
+                    "scale=1920:1080:force_original_aspect_ratio=decrease,"
+                    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+                    f"{subtitle_filter},fps=25,format=yuv420p"
+                )
+                subprocess.run(
+                    [ffmpeg, "-y", "-i", str(presenter_video), "-i", str(audio), "-t", str(duration),
+                     "-vf", presenter_filter, "-map", "0:v:0", "-map", "1:a:0",
+                     "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,acompressor=threshold=-18dB:ratio=2:attack=20:release=250,apad",
+                     "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+                     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
+                    check=True, capture_output=True, text=True, timeout=180,
+                )
+            except subprocess.TimeoutExpired:
+                output.unlink(missing_ok=True)
+                return MediaResult(self.name, self.media_type, "failed", [], "SadTalker/FFmpeg timed out while generating the talking presenter.")
+            except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+                output.unlink(missing_ok=True)
+                detail = getattr(exc, "stderr", "") or getattr(exc, "stdout", "") or str(exc)
+                return MediaResult(self.name, self.media_type, "failed", [], f"SadTalker presenter generation failed: {str(detail)[-1200:]}")
+            if not output.is_file() or output.stat().st_size < 1024:
+                output.unlink(missing_ok=True)
+                return MediaResult(self.name, self.media_type, "failed", [], "SadTalker path returned without a valid MP4.")
+            return MediaResult(self.name, self.media_type, "completed", [str(output)])
+
         command = [
             ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
             "-i", str(audio), "-t", str(duration), "-vf", motion_filter,
