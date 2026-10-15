@@ -40,9 +40,11 @@ jobs:
           }
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCTION_RUN_ID")"
           workflow_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("name", ""))')"
+          workflow_path="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("path", ""))')"
+          event_name="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("event", ""))')"
           head_branch="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("head_branch", ""))')"
           conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion", ""))')"
-          [[ "$workflow_name" == "production-artifact" && "$head_branch" == "main" && "$conclusion" == "success" ]] || {
+          [[ "$workflow_name" == "production-artifact" && "$workflow_path" == ".github/workflows/production-artifact.yml" && "$event_name" != "pull_request" && "$head_branch" == "main" && "$conclusion" == "success" ]] || {
             echo "Refusing upload: run must be a successful production-artifact run from main."
             exit 1
           }
@@ -103,6 +105,7 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_EXPECTED_CHANNEL_HANDLE: handmade.secrets
           YOUTUBE_PRIVACY_STATUS: private
+          YOUTUBE_UPLOAD_CONFIRMATION: UPLOAD_ONE_PRIVATE_TEST_VIDEO
         run: |
           set -euo pipefail
           python scripts/publish_youtube.py "${{ steps.select.outputs.video }}" "${{ steps.select.outputs.package }}"
