@@ -105,9 +105,30 @@ jobs:
 
               validation = result["production"]["validation"]
               if validation["status"] != "valid":
-                  raise SystemExit(content["content_id"] + ": validation failed")
+                  providers = result["production"].get("providers", [])
+                  details = {
+                      "content_id": content["content_id"],
+                      "validation": validation,
+                      "production_status": result["production"].get("status"),
+                      "providers": [
+                          {
+                              "provider": item.get("provider"),
+                              "media_type": item.get("media_type"),
+                              "status": item.get("status"),
+                              "error": item.get("error"),
+                              "artifacts_count": len(item.get("artifacts", [])),
+                          }
+                          for item in providers
+                      ],
+                  }
+                  print("PRODUCTION_VALIDATION_DIAGNOSTICS=" + json.dumps(details, ensure_ascii=False))
+                  raise SystemExit(content["content_id"] + ": validation failed; see structured diagnostics above")
               if not result["production"]["publish_ready"]:
-                  raise SystemExit(content["content_id"] + ": not publish-ready")
+                  print("PRODUCTION_NOT_READY=" + json.dumps({
+                      "content_id": content["content_id"],
+                      "production": result["production"],
+                  }, ensure_ascii=False))
+                  raise SystemExit(content["content_id"] + ": not publish-ready; see diagnostics above")
               evidence.append({
                   "content_id": content["content_id"],
                   "duration_planned_seconds": duration,
