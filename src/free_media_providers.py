@@ -333,8 +333,8 @@ class FreeLocalVideoProvider:
             "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,"
             f"{subtitle_filter},format=yuv420p"
         )
-        # Optional realistic talking presenter. This is opt-in and requires a separately
-        # installed SadTalker checkout/model weights plus an owned or licensed portrait.
+        # Optional mixed presenter + crochet montage. Requires a separate SadTalker install.
+        # Real crochet clips are optional and must be owned/licensed: CROCHET_BROLL_DIR.
         sadtalker_dir = os.environ.get("SADTALKER_DIR", "").strip()
         presenter_image = os.environ.get("SADTALKER_SOURCE_IMAGE", "").strip()
         if sadtalker_dir or presenter_image:
@@ -355,6 +355,8 @@ class FreeLocalVideoProvider:
             wav_audio = request.output_dir / "sadtalker_input.wav"
             result_dir = request.output_dir / "sadtalker_results"
             result_dir.mkdir(parents=True, exist_ok=True)
+            segment_dir = request.output_dir / "mixed_segments"
+            segment_dir.mkdir(parents=True, exist_ok=True)
             try:
                 subprocess.run(
                     [ffmpeg, "-y", "-i", str(audio), "-vn", "-ac", "1", "-ar", "16000", str(wav_audio)],
@@ -370,14 +372,70 @@ class FreeLocalVideoProvider:
                 if not generated:
                     raise RuntimeError("SadTalker completed without producing an MP4 file.")
                 presenter_video = generated[0]
-                presenter_filter = (
-                    "scale=1920:1080:force_original_aspect_ratio=decrease,"
-                    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
-                    f"{subtitle_filter},fps=25,format=yuv420p"
+                broll_dir = Path(os.environ.get("CROCHET_BROLL_DIR", "").strip()).expanduser()
+                broll_clips = sorted(
+                    p.resolve() for p in broll_dir.glob("*")
+                    if broll_dir.is_dir() and p.is_file() and p.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"}
+                ) if str(broll_dir) else []
+                concat_segments = []
+                cursor = 0.0
+                broll_index = 0
+                for index, (image, scene_duration) in enumerate(zip(images, durations)):
+                    scene = scenes[index] if index < len(scenes) else {}
+                    purpose = str(scene.get("purpose", "lesson")).lower()
+                    segment = segment_dir / f"segment_{index + 1:03d}.mp4"
+                    # Keep the host on the opening/closing beats. Use actual crochet
+                    # footage for teaching/application beats when licensed clips exist.
+                    use_broll = purpose not in {"hook", "cta"} and bool(broll_clips)
+                    if use_broll:
+                        clip = broll_clips[broll_index % len(broll_clips)]
+                        broll_index += 1
+                        segment_cmd = [
+                            ffmpeg, "-y", "-stream_loop", "-1", "-i", str(clip),
+                            "-t", str(scene_duration), "-vf",
+                            "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=25,format=yuv420p",
+                            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                            str(segment),
+                        ]
+                    elif purpose in {"hook", "cta"}:
+                        segment_cmd = [
+                            ffmpeg, "-y", "-ss", str(cursor), "-i", str(presenter_video),
+                            "-t", str(scene_duration), "-vf",
+                            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=25,format=yuv420p",
+                            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                            str(segment),
+                        ]
+                    else:
+                        segment_cmd = [
+                            ffmpeg, "-y", "-loop", "1", "-framerate", "25", "-i", str(image),
+                            "-t", str(scene_duration), "-vf",
+                            "scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160,"
+                            "zoompan=z='min(zoom+0.00012,1.12)':x='iw/2-(iw/zoom/2)':"
+                            "y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,format=yuv420p",
+                            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                            str(segment),
+                        ]
+                    subprocess.run(segment_cmd, check=True, capture_output=True, text=True, timeout=180)
+                    if not segment.is_file() or segment.stat().st_size < 512:
+                        raise RuntimeError(f"Mixed-video segment {index + 1} is missing or empty.")
+                    concat_segments.append(segment)
+                    cursor += scene_duration
+
+                segment_list = request.output_dir / "mixed_segments.txt"
+                segment_list.write_text(
+                    "\n".join("file '" + str(p.resolve()).replace("'", "'\\''") + "'" for p in concat_segments) + "\n",
+                    encoding="utf-8",
+                )
+                mixed_video = request.output_dir / "mixed_picture_only.mp4"
+                subprocess.run(
+                    [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(segment_list),
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                     "-an", str(mixed_video)],
+                    check=True, capture_output=True, text=True, timeout=180,
                 )
                 subprocess.run(
-                    [ffmpeg, "-y", "-i", str(presenter_video), "-i", str(audio), "-t", str(duration),
-                     "-vf", presenter_filter, "-map", "0:v:0", "-map", "1:a:0",
+                    [ffmpeg, "-y", "-i", str(mixed_video), "-i", str(audio), "-t", str(duration),
+                     "-vf", subtitle_filter, "-map", "0:v:0", "-map", "1:a:0",
                      "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,acompressor=threshold=-18dB:ratio=2:attack=20:release=250,apad",
                      "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
                      "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)],
@@ -385,14 +443,14 @@ class FreeLocalVideoProvider:
                 )
             except subprocess.TimeoutExpired:
                 output.unlink(missing_ok=True)
-                return MediaResult(self.name, self.media_type, "failed", [], "SadTalker/FFmpeg timed out while generating the talking presenter.")
+                return MediaResult(self.name, self.media_type, "failed", [], "SadTalker/FFmpeg timed out while generating the mixed video.")
             except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
                 output.unlink(missing_ok=True)
                 detail = getattr(exc, "stderr", "") or getattr(exc, "stdout", "") or str(exc)
-                return MediaResult(self.name, self.media_type, "failed", [], f"SadTalker presenter generation failed: {str(detail)[-1200:]}")
+                return MediaResult(self.name, self.media_type, "failed", [], f"Mixed presenter/crochet generation failed: {str(detail)[-1200:]}")
             if not output.is_file() or output.stat().st_size < 1024:
                 output.unlink(missing_ok=True)
-                return MediaResult(self.name, self.media_type, "failed", [], "SadTalker path returned without a valid MP4.")
+                return MediaResult(self.name, self.media_type, "failed", [], "Mixed-video path returned without a valid MP4.")
             return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
         command = [
