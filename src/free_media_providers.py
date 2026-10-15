@@ -54,7 +54,7 @@ class FreeLocalAudioProvider:
         for attempt in range(3):
             output.unlink(missing_ok=True)
             try:
-                completed = subprocess.run(
+                subprocess.run(
                     command, check=True, capture_output=True, text=True, timeout=45
                 )
                 if output.is_file() and output.stat().st_size >= 1024:
@@ -186,9 +186,8 @@ class FreeLocalImageProvider:
             number = int(scene.get("scene", len(artifacts) + 1))
             purpose = str(scene.get("purpose", "lesson"))
             output = request.output_dir / f"scene_{number:03d}.ppm"
-            if output.exists():
-                artifacts.append(str(output))
-                continue
+            # Regenerate deterministically instead of trusting stale/corrupt files
+            # left by an interrupted previous attempt.
             pixels = self._draw_visual(width, height, number, purpose, scene)
             with output.open("wb") as fh:
                 fh.write(f"P6\n{width} {height}\n255\n".encode())
@@ -214,8 +213,8 @@ class FreeLocalVideoProvider:
     def generate(self, request: MediaRequest) -> MediaResult:
         request.output_dir.mkdir(parents=True, exist_ok=True)
         output = request.output_dir / "video.mp4"
-        if output.exists():
-            return MediaResult(self.name, self.media_type, "completed", [str(output)])
+        # Never mark a previous partial/corrupt MP4 as completed on rerun.
+        output.unlink(missing_ok=True)
 
         ffmpeg = shutil.which("ffmpeg")
         images = list(request.payload.get("image_paths", []))
@@ -314,9 +313,21 @@ class FreeLocalVideoProvider:
         try:
             subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
+            output.unlink(missing_ok=True)
             return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg timed out after 60 seconds")
-        except (OSError, subprocess.CalledProcessError) as exc:
-            return MediaResult(self.name, self.media_type, "failed", [], str(exc))
+        except subprocess.CalledProcessError as exc:
+            output.unlink(missing_ok=True)
+            detail = (exc.stderr or exc.stdout or "").strip()
+            message = f"ffmpeg exited with code {exc.returncode}"
+            if detail:
+                message += f": {detail[-1200:]}"
+            return MediaResult(self.name, self.media_type, "failed", [], message)
+        except OSError as exc:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], f"{type(exc).__name__}: {exc}")
+        if not output.is_file() or output.stat().st_size < 1024:
+            output.unlink(missing_ok=True)
+            return MediaResult(self.name, self.media_type, "failed", [], "ffmpeg returned success but MP4 output is missing or too small")
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
