@@ -7,6 +7,7 @@ import shutil
 import struct
 import subprocess
 import textwrap
+import time
 import wave
 from pathlib import Path
 
@@ -47,15 +48,39 @@ class FreeLocalAudioProvider:
             edge_tts, "--voice", "ar-EG-SalmaNeural",
             "--rate", "+0%", "--text", script, "--write-media", str(output),
         ]
-        try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=90)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # The hosted speech service can fail transiently. Retry a few times,
+        # but never replace missing speech with silence or a synthetic tone.
+        last_error = "unknown TTS error"
+        for attempt in range(3):
             output.unlink(missing_ok=True)
-            return MediaResult(self.name, self.media_type, "failed", [], f"Egyptian Arabic TTS failed: {exc}")
+            try:
+                completed = subprocess.run(
+                    command, check=True, capture_output=True, text=True, timeout=45
+                )
+                if output.is_file() and output.stat().st_size >= 1024:
+                    break
+                last_error = "TTS output is missing or too small"
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or exc.stdout or "").strip()
+                last_error = (
+                    f"exit code {exc.returncode}: {detail[-1200:]}"
+                    if detail else f"exit code {exc.returncode}; no stderr/stdout returned"
+                )
+            except subprocess.TimeoutExpired:
+                last_error = "request timed out after 45 seconds"
+            except OSError as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
 
         if not output.is_file() or output.stat().st_size < 1024:
             output.unlink(missing_ok=True)
-            return MediaResult(self.name, self.media_type, "failed", [], "TTS output is missing or too small")
+            return MediaResult(
+                self.name, self.media_type, "failed", [],
+                f"Egyptian Arabic TTS failed after 3 attempts: {last_error}",
+            )
+
         return MediaResult(self.name, self.media_type, "completed", [str(output)])
 
 
