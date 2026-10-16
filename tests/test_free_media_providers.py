@@ -11,9 +11,10 @@ def test_free_local_audio_provider_creates_real_egyptian_speech(tmp_path: Path, 
     monkeypatch.setattr(providers.shutil, "which", lambda name: "/usr/bin/edge-tts" if name == "edge-tts" else None)
 
     def fake_tts(command, **kwargs):
-        assert "ar-EG-SalmaNeural" in command
-        assert "--rate=-8%" in command
-        assert command[command.index("--pitch") + 1] == "+1Hz"
+        assert command[command.index("--voice") + 1] == "ar-EG-SalmaNeural"
+        assert "--rate=-5%" in command
+        assert command[command.index("--pitch") + 1] == "+0Hz"
+        assert command[command.index("--text") + 1].endswith(".")
         output = Path(command[command.index("--write-media") + 1])
         output.write_bytes(b"ID3" + b"\x00" * 1500)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -140,6 +141,9 @@ def test_free_local_video_provider_uses_full_hd_and_motion_filter(tmp_path: Path
     assert "s=1920x1080" in command[command.index("-vf") + 1]
     assert "zoompan" in command[command.index("-vf") + 1]
     assert "zoom+0.00012" in command[command.index("-vf") + 1]
+    assert "drawbox=" in command[command.index("-vf") + 1]
+    assert "mod(t,0.42)" in command[command.index("-vf") + 1]
+    assert "sin(2*PI*t)" in command[command.index("-vf") + 1]
     assert "loudnorm=I=-16" in command[command.index("-af") + 1]
     assert "acompressor=" in command[command.index("-af") + 1]
     video_filter = command[command.index("-vf") + 1]
