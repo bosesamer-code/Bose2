@@ -24,12 +24,15 @@ jobs:
       - name: Run regression tests
         run: python -m pytest -q
       - name: Generate production queue
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python - <<'PY'
           import json
           from datetime import date
           from pathlib import Path
           from src.content_engine import generate_lesson, load_catalog, validate_lesson
+          from src.gemini_script_enhancer import enhance_lesson_with_gemini
 
           catalog = load_catalog(Path("content/content_catalog.json"))
           day = date.today().isoformat()
@@ -40,6 +43,7 @@ jobs:
                   continue
               index = date.today().toordinal() % len(ideas)
               lesson = generate_lesson(catalog, topic["topic_id"], index)
+              lesson = enhance_lesson_with_gemini(lesson)
               lesson["content_id"] = f"{lesson['content_id']}-{day}"
               lesson["title"] = f"{lesson['title']} — {day}"
               validate_lesson(lesson)
