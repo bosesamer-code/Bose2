@@ -38,6 +38,20 @@ class FreeLocalAudioProvider:
         if not script:
             return MediaResult(self.name, self.media_type, "failed", [], "Arabic narration script is empty")
 
+        # Preserve the Arabic wording while making punctuation and pauses more
+        # predictable for conversational Egyptian TTS.
+        script = " ".join(script.split())
+        script = script.replace(" ،", "،").replace(" ؛", "؛").replace(" ؟", "؟")
+        if script[-1] not in ".!?؟؛":
+            script += "."
+
+        voice = str(request.payload.get("voice", "ar-EG-SalmaNeural")).strip()
+        if voice != "ar-EG-SalmaNeural":
+            return MediaResult(
+                self.name, self.media_type, "failed", [],
+                "Unsupported voice for the Egyptian-female profile; use ar-EG-SalmaNeural.",
+            )
+
         edge_tts = shutil.which("edge-tts")
         if not edge_tts:
             return MediaResult(
@@ -46,8 +60,8 @@ class FreeLocalAudioProvider:
             )
 
         command = [
-            edge_tts, "--voice", "ar-EG-SalmaNeural",
-            "--rate=-8%", "--pitch", "+1Hz", "--volume", "+0%", "--text", script, "--write-media", str(output),
+            edge_tts, "--voice", voice,
+            "--rate=-5%", "--pitch", "+0Hz", "--volume", "+0%", "--text", script, "--write-media", str(output),
         ]
         # The hosted speech service can fail transiently. Retry a few times,
         # but never replace missing speech with silence or a synthetic tone.
@@ -328,6 +342,14 @@ class FreeLocalVideoProvider:
         # Full-HD delivery master with subtle Ken Burns motion.
         # This animates illustrated artwork; it is not live-action or a photorealistic presenter.
         motion_filter = (
+            # The source art is 640x360 and the presenter face/hand sit in the
+            # left panel. Animate a mouth-open beat and a small hand gesture
+            # before scaling; zoompan alone only moves the camera, not the host.
+            "drawbox=x=108:y=180:w=44:h=10:color=0x9b4144:t=fill:"
+            "enable='lt(mod(t,0.42),0.14)',"
+            "drawbox=x='20+4*sin(2*PI*t)':y='203+4*sin(2*PI*t)':"
+            "w=14:h=14:color=0xebb18b:t=fill:"
+            "enable='lt(mod(t,0.70),0.35)',"
             "fps=25,scale=3840:2160:force_original_aspect_ratio=increase,"
             "crop=3840:2160,zoompan=z='min(zoom+0.00012,1.12)':"
             "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=25,"
