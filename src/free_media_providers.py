@@ -359,6 +359,13 @@ class FreeLocalVideoProvider:
         # Real crochet clips are optional and must be owned/licensed: CROCHET_BROLL_DIR.
         sadtalker_dir = os.environ.get("SADTALKER_DIR", "").strip()
         presenter_image = os.environ.get("SADTALKER_SOURCE_IMAGE", "").strip()
+        require_realistic = os.environ.get("REQUIRE_REALISTIC_PRESENTER", "").strip().lower() in {"1", "true", "yes"}
+        if require_realistic and not (sadtalker_dir and presenter_image):
+            return MediaResult(
+                self.name, self.media_type, "not_configured", [],
+                "Realistic-presenter mode is required, but SadTalker is not configured. "
+                "Set SADTALKER_DIR and SADTALKER_SOURCE_IMAGE; refusing to silently ship the illustrated fallback.",
+            )
         if sadtalker_dir or presenter_image:
             if not sadtalker_dir or not presenter_image:
                 return MediaResult(
