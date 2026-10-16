@@ -47,7 +47,7 @@ class FreeLocalAudioProvider:
 
         command = [
             edge_tts, "--voice", "ar-EG-SalmaNeural",
-            "--rate", "-8%", "--pitch", "+1Hz", "--volume", "+0%", "--text", script, "--write-media", str(output),
+            "--rate=-8%", "--pitch", "+1Hz", "--volume", "+0%", "--text", script, "--write-media", str(output),
         ]
         # The hosted speech service can fail transiently. Retry a few times,
         # but never replace missing speech with silence or a synthetic tone.
