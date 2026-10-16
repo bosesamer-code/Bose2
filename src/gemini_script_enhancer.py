@@ -33,12 +33,15 @@ def enhance_lesson_with_gemini(
         for s in original["scenes"]
     ]
     prompt = (
-        "Rewrite this beginner handmade/crochet lesson in clear, natural Egyptian "
-        "Arabic suitable for a female narrator. Keep every instruction practical, "
-        "accurate, and beginner-safe. Do not invent facts, materials, prices, or "
-        "results. Preserve exactly the four scene purposes and order: hook, lesson, "
-        "application, cta. Return ONLY JSON with a 'scenes' array, each item having "
-        "'purpose' and 'text'. Keep text concise for spoken narration. Input: "
+        "Rewrite and expand this beginner crochet/handmade lesson in clear, natural Egyptian "
+        "Arabic suitable for a female narrator. Target a spoken script of 160–330 Arabic "
+        "words total, suitable for a 1–3 minute tutorial at a natural pace. Include "
+        "specific, practical steps and useful checks a beginner can perform; avoid "
+        "repeating ideas just to increase length. Keep every instruction accurate and "
+        "beginner-safe. Do not invent facts, materials, prices, or results. Preserve "
+        "exactly the four scene purposes and order: hook, lesson, application, cta. "
+        "Return ONLY JSON with a 'scenes' array, each item having 'purpose' and 'text'. "
+        "Keep the four scenes balanced and spoken-friendly. Input: "
         + json.dumps(scene_spec, ensure_ascii=False)
     )
     payload = {
@@ -73,6 +76,11 @@ def enhance_lesson_with_gemini(
                 return lesson
             current["text"] = wording.strip()
         updated["script"] = " ".join(scene["text"] for scene in updated["scenes"])
+        # Reject a polished but too-short response: the production target is a
+        # useful 1–3 minute lesson, not a 25-second teaser.
+        word_count = len(updated["script"].split())
+        if not 160 <= word_count <= 330:
+            return lesson
         validate_lesson(updated)
         return updated
     except (KeyError, IndexError, TypeError, ValueError, OSError, TimeoutError, urllib.error.URLError):
