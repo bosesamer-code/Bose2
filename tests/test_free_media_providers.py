@@ -250,3 +250,48 @@ def test_video_provider_regenerates_existing_stale_output(tmp_path: Path, monkey
     assert result.status == "completed"
     assert len(calls) == 1
     assert output.read_bytes().startswith(b"regenerated mp4")
+
+
+def test_realistic_presenter_required_never_silently_falls_back_to_cartoon(tmp_path: Path, monkeypatch):
+    import subprocess
+    import src.free_media_providers as providers
+    from src.free_media_providers import FreeLocalVideoProvider
+    from src.media_providers import MediaRequest
+
+    monkeypatch.setattr(
+        providers.shutil, "which",
+        lambda name: f"/usr/bin/{name}" if name in {"ffmpeg", "ffprobe"} else None,
+    )
+    monkeypatch.setenv("REQUIRE_REALISTIC_PRESENTER", "true")
+    monkeypatch.delenv("SADTALKER_DIR", raising=False)
+    monkeypatch.delenv("SADTALKER_SOURCE_IMAGE", raising=False)
+
+    image = tmp_path / "scene_001.ppm"
+    image.write_bytes(b"P6\\n1 1\\n255\\n" + bytes([1, 2, 3]))
+    audio = tmp_path / "voice.mp3"
+    audio.write_bytes(b"ID3" + b"\\x00" * 20)
+
+    def fake_run(command, **kwargs):
+        if command[0].endswith("ffprobe"):
+            return subprocess.CompletedProcess(command, 0, "65.0", "")
+        raise AssertionError("FFmpeg must not render the illustrated fallback")
+
+    monkeypatch.setattr(providers.subprocess, "run", fake_run)
+    result = FreeLocalVideoProvider().generate(
+        MediaRequest(
+            "realistic-presenter-required",
+            tmp_path / "out",
+            {
+                "image_paths": [str(image)],
+                "audio_path": str(audio),
+                "duration_seconds": 65,
+                "scene_plan": [
+                    {"scene": 1, "purpose": "lesson", "text": "خطوة عملية", "duration_seconds": 65}
+                ],
+            },
+        )
+    )
+
+    assert result.status == "not_configured"
+    assert "refusing to silently ship the illustrated fallback" in result.error
+    assert not (tmp_path / "out" / "video.mp4").exists()

@@ -57,6 +57,8 @@ jobs:
       - name: Validate content engine
         run: python -m pytest -q tests/test_content_engine.py tests/test_content_queue.py
       - name: Produce and validate queued lessons
+        env:
+          REQUIRE_REALISTIC_PRESENTER: "true"
         run: |
           python - <<'PY'
           import json
@@ -204,6 +206,11 @@ jobs:
                       f"Video duration mismatch for {content['content_id']}: "
                       f"{video_duration:.2f}s vs expected {expected_duration}s "
                       f"(planned {planned_duration}s, narration {audio_duration:.2f}s)"
+                  )
+              if not 60 <= video_duration <= 180:
+                  raise SystemExit(
+                      f"Video must be 60–180 seconds for {content['content_id']}; "
+                      f"got {video_duration:.2f}s. Check the long-form script enhancement."
                   )
               if audio_duration < 1 or audio_duration > expected_duration + 0.25:
                   raise SystemExit("Unexpected narration duration for " + content["content_id"])
