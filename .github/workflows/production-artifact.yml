@@ -205,6 +205,11 @@ jobs:
                       f"{video_duration:.2f}s vs expected {expected_duration}s "
                       f"(planned {planned_duration}s, narration {audio_duration:.2f}s)"
                   )
+              if not 60 <= video_duration <= 180:
+                  raise SystemExit(
+                      f"Video must be 60–180 seconds for {content['content_id']}; "
+                      f"got {video_duration:.2f}s. Check the long-form script enhancement."
+                  )
               if audio_duration < 1 or audio_duration > expected_duration + 0.25:
                   raise SystemExit("Unexpected narration duration for " + content["content_id"])
 
