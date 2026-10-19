@@ -9,7 +9,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from src.free_media_providers import (
     FreeLocalDesignProvider,
