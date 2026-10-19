@@ -29,6 +29,22 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
       - name: Compile
         run: python -m compileall -q src tests scripts
+      - name: Validate optional GPU trial notebook
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('notebooks/free_gpu_cogvideox_trial.ipynb')
+          notebook = json.loads(path.read_text(encoding='utf-8'))
+          assert notebook.get('nbformat') == 4, 'Notebook must use nbformat 4'
+          cells = notebook.get('cells', [])
+          assert cells and all(cell.get('cell_type') in {'markdown', 'code'} for cell in cells)
+          code = '\\n'.join(''.join(cell.get('source', [])) for cell in cells if cell.get('cell_type') == 'code')
+          for required in ('torch.cuda.is_available()', 'CogVideoXPipeline', 'export_to_video', 'files.download'):
+              assert required in code, f'Missing required notebook step: {required}'
+          assert all(not cell.get('outputs') for cell in cells if cell.get('cell_type') == 'code'), 'Do not commit generated notebook outputs'
+          print(f'Validated {path}: {len(cells)} cells')
+          PY
       - name: Test
         run: python -m pytest -q
       - name: Secret filename check
