@@ -106,7 +106,7 @@ class RealFootageVideoProvider:
                         line = (line + " " + word).strip()
                 if line:
                     wrapped.append(line)
-                subtitle_lines.extend([str(index + 1), f"{srt_time(cursor)} --> {srt_time(cursor + durations[index])}", "\\n".join(wrapped), ""])
+                subtitle_lines.extend([str(index + 1), f"{srt_time(cursor)} --> {srt_time(cursor + durations[index])}", "\n".join(wrapped), ""])
             cursor += durations[index]
         subtitle_path.write_text("\n".join(subtitle_lines), encoding="utf-8")
 
