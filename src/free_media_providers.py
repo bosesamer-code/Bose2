@@ -510,7 +510,13 @@ def free_local_registry():
     from src.media_providers import ProviderRegistry
     registry = ProviderRegistry()
     registry.register(FreeLocalAudioProvider())
-    registry.register(FreeLocalImageProvider())
+    # Cloudflare calls are opt-in; missing credentials or an absent flag never
+    # causes network calls or unexpected quota usage.
+    if os.getenv("CLOUDFLARE_ENABLE_IMAGE_GENERATION", "").strip().lower() == "true":
+        from src.cloudflare_image_provider import CloudflareWorkersAIImageProvider
+        registry.register(CloudflareWorkersAIImageProvider())
+    else:
+        registry.register(FreeLocalImageProvider())
     registry.register(FreeLocalDesignProvider())
     registry.register(FreeLocalVideoProvider())
     registry.register(FreeLocalThumbnailProvider())
