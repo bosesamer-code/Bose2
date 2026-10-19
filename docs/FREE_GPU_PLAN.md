@@ -11,6 +11,14 @@ Do not connect a notebook GPU directly to the scheduled GitHub Actions productio
 - **Hugging Face Spaces:** CPU Basic is free; GPU hardware is normally billed. Community GPU grants/ZeroGPU access may be possible but must not be assumed or treated as guaranteed capacity.
 - **GitHub Actions hosted runners:** do not assume a GPU is present. The existing workflow remains CPU-only unless a separately verified GPU service is deliberately configured.
 
+## Runnable experiment notebook
+
+A manual, opt-in CogVideoX trial notebook is included at `notebooks/free_gpu_cogvideox_trial.ipynb`. Open it in Colab using this link:
+
+https://colab.research.google.com/github/bosesamer-code/Bose2/blob/research/free-gpu-production-path/notebooks/free_gpu_cogvideox_trial.ipynb
+
+Choose a GPU runtime only if a free GPU option is offered. If no GPU is available, stop; do not buy credits or upgrade. The notebook checks for a GPU, records the GPU name and VRAM, generates one short clip, checks that an MP4 was written, and offers a download. It does not call a paid video API or publish content. This notebook has been added to the repository, but it has **not yet been executed on a real GPU**, so successful generation is not claimed.
+
 ## Recommended rollout
 
 1. Keep the existing factory as the safe default; no GPU calls occur by default.
@@ -21,7 +29,7 @@ Do not connect a notebook GPU directly to the scheduled GitHub Actions productio
 
 ## Acceptance criteria before enabling automatic GPU generation
 
-- One real short video clip is produced and downloaded successfully.
+- One real short video clip is produced and downloaded successfully using the manual notebook.
 - GPU model and VRAM are recorded without exposing account secrets.
 - The job fails safely on missing credentials, unavailable GPU, quota exhaustion, timeout, or invalid video.
 - No payment method, paid plan, billing upgrade, or automatic publication is enabled.
