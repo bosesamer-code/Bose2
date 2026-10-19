@@ -2,7 +2,7 @@
 
 Bose2 now has an **opt-in** real-footage provider path. It does not create a face/avatar and it does not claim generated illustrations are real footage.
 
-## Required inputs
+## Phone-friendly free Colab option\n\nOpen the [free real-footage Colab notebook](https://colab.research.google.com/github/bosesamer-code/Bose2/blob/feature/real-hands-footage-mode/notebooks/real_crochet_footage_free_colab.ipynb) from a phone browser, upload one narration file and your own crochet clips, edit the Arabic caption examples, run the cells, then download the MP4. It uses a free CPU runtime and FFmpeg; no GPU or billing is needed. The notebook has not yet been run end-to-end in a live Colab session, so treat the first render as a test and review the result carefully.\n\n## Required inputs
 
 - `recorded_audio_path`: path to your own recorded narration as an MP3 file (at least 1 KB).
 - `real_footage_paths`: one or more video paths in MP4, MOV, MKV, or WEBM format. Use footage you recorded yourself or have permission to use.
