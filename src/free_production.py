@@ -8,7 +8,7 @@ from typing import Any
 
 from src.artifact_validator import ArtifactValidator
 from src.free_media_providers import free_local_registry
-from src.real_footage_providers import real_footage_registry
+from src.hybrid_cinematic_providers import hybrid_cinematic_registry
 from src.job_state import ProductionJob
 from src.media_pipeline import MediaPipeline
 
@@ -43,8 +43,12 @@ def run_free_production(task_id: str, job_root: Path, inputs: dict[str, Any]) ->
     job.transition("producing")
     _persist(job, state_path)
 
-    real_footage_requested = bool(inputs.get("real_footage_paths")) and bool(inputs.get("recorded_audio_path"))
-    pipeline = MediaPipeline(real_footage_registry() if real_footage_requested else free_local_registry())
+    cinematic_montage_requested = bool(inputs.get("real_footage_paths")) and bool(
+        inputs.get("recorded_audio_path") or inputs.get("script")
+    )
+    pipeline = MediaPipeline(
+        hybrid_cinematic_registry() if cinematic_montage_requested else free_local_registry()
+    )
     result = pipeline.run(task_id, job_root, inputs)
     validation = validator.validate(job_root, require_media=True)
     result["validation"] = validation
