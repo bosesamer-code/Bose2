@@ -23,6 +23,39 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
       - name: Run regression tests
         run: python -m pytest -q
+      - name: Cloudflare image smoke test (manual runs only)
+        if: github.event_name == 'workflow_dispatch' && vars.CLOUDFLARE_RUN_SMOKE_TEST == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_MAX_IMAGES_PER_JOB: "1"
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "SKIP: Cloudflare secrets are not both configured; no external request was sent."
+            exit 0
+          fi
+          python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from src.cloudflare_image_provider import CloudflareWorkersAIImageProvider
+          from src.media_providers import MediaRequest
+
+          with tempfile.TemporaryDirectory(prefix="cloudflare-smoke-") as temp:
+              result = CloudflareWorkersAIImageProvider().generate(
+                  MediaRequest(
+                      "cloudflare-smoke-test",
+                      Path(temp),
+                      {"scene_plan": [{"scene": 1, "purpose": "lesson", "text": "crochet yarn and hook on a clean craft table"}]},
+                  )
+              )
+              if result.status != "completed" or len(result.artifacts) != 1:
+                  print("Cloudflare image smoke test:", result.status, result.error or "no image returned")
+                  raise SystemExit(1)
+              image = Path(result.artifacts[0])
+              if not image.is_file() or image.stat().st_size < 100:
+                  raise SystemExit("Cloudflare returned an empty or invalid image artifact.")
+              print("PASS: Cloudflare Workers AI returned one image; credentials were not printed.")
+          PY
       - name: Generate production queue
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -57,6 +90,8 @@ jobs:
       - name: Validate content engine
         run: python -m pytest -q tests/test_content_engine.py tests/test_content_queue.py
       - name: Produce and validate queued lessons
+        env:
+          CLOUDFLARE_ENABLE_IMAGE_GENERATION: ${{ vars.CLOUDFLARE_ENABLE_IMAGE_GENERATION }}
         run: |
           python - <<'PY'
           import json
