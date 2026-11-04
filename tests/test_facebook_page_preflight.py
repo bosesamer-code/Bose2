@@ -33,7 +33,7 @@ class FakeHTTP:
 
 def test_page_identity_accepts_exact_configured_page_id():
     http = FakeHTTP({"id": "123", "name": "Bose Test Page"})
-    name = verify_page_identity(http, "v26.0", "123", "do-not-log-this-token")
+    name = verify_page_identity(http, "v26.0", "123", "do-not-log-this-token", "123")
     assert name == "Bose Test Page"
     assert http.calls[0][0] == "https://graph.facebook.com/v26.0/123"
     assert http.calls[0][1]["fields"] == "id,name"
@@ -44,13 +44,20 @@ def test_page_identity_accepts_exact_configured_page_id():
 def test_page_identity_rejects_a_different_page_id():
     http = FakeHTTP({"id": "999", "name": "Wrong Page"})
     with pytest.raises(SystemExit, match="does not resolve to the configured Page ID"):
-        verify_page_identity(http, "v26.0", "123", "token")
+        verify_page_identity(http, "v26.0", "123", "token", "123")
 
 
 def test_page_identity_fails_closed_without_exposing_api_error_or_token():
     secret = "sensitive-token-value"
     http = FakeHTTP(error=f"request failed with {secret}")
     with pytest.raises(SystemExit) as error:
-        verify_page_identity(http, "v26.0", "123", secret)
+        verify_page_identity(http, "v26.0", "123", secret, "123")
     assert secret not in str(error.value)
     assert "refusing upload" in str(error.value)
+
+
+def test_page_identity_rejects_unapproved_configured_page_before_network_call():
+    http = FakeHTTP({"id": "123", "name": "Bose Test Page"})
+    with pytest.raises(SystemExit, match="does not match the approved destination"):
+        verify_page_identity(http, "v26.0", "123", "token", "61594977459757")
+    assert http.calls == []
