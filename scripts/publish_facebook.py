@@ -9,11 +9,17 @@ from pathlib import Path
 from typing import Any
 
 
-def verify_page_identity(http: Any, version: str, page_id: str, token: str) -> str:
+def verify_page_identity(
+    http: Any, version: str, page_id: str, token: str, expected_page_id: str
+) -> str:
     """Verify the configured Page ID against the Page token before any upload.
 
     Do not include the access token or raw HTTP exception in logs.
     """
+    if not expected_page_id or page_id != expected_page_id:
+        raise SystemExit(
+            "Configured Facebook Page ID does not match the approved destination; refusing upload."
+        )
     url = f"https://graph.facebook.com/{version}/{page_id}"
     try:
         response = http.get(
@@ -69,12 +75,13 @@ def main() -> int:
 
     page_id = os.getenv("FACEBOOK_PAGE_ID", "").strip()
     token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
-    if not page_id or not token:
+    expected_page_id = os.getenv("FACEBOOK_EXPECTED_PAGE_ID", "").strip()
+    if not page_id or not token or not expected_page_id:
         raise SystemExit("FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must be configured.")
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
     import requests
 
-    page_name = verify_page_identity(requests, version, page_id, token)
+    page_name = verify_page_identity(requests, version, page_id, token, expected_page_id)
     print(f"Verified Facebook destination Page: {page_name} ({page_id})")
 
     url = f"https://graph.facebook.com/{version}/{page_id}/videos"
