@@ -1,7 +1,46 @@
 """Publish one MP4 to the owner-authorized Facebook Page after explicit confirmation."""
+
 from __future__ import annotations
-import json, os, sys
+
+import json
+import os
+import sys
 from pathlib import Path
+from typing import Any
+
+
+def verify_page_identity(
+    http: Any, version: str, page_id: str, token: str, expected_page_id: str
+) -> str:
+    """Verify the configured Page ID against the Page token before any upload.
+
+    Do not include the access token or raw HTTP exception in logs.
+    """
+    if not expected_page_id or page_id != expected_page_id:
+        raise SystemExit(
+            "Configured Facebook Page ID does not match the approved destination; refusing upload."
+        )
+    url = f"https://graph.facebook.com/{version}/{page_id}"
+    try:
+        response = http.get(
+            url,
+            params={"fields": "id,name", "access_token": token},
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        raise SystemExit(
+            "Could not verify Facebook Page identity (token, permission, or API check failed); "
+            "refusing upload."
+        ) from None
+
+    if not isinstance(data, dict) or str(data.get("id", "")) != page_id:
+        raise SystemExit(
+            "Facebook token does not resolve to the configured Page ID; refusing upload."
+        )
+    return str(data.get("name") or page_id)
+
 
 def main() -> int:
     if len(sys.argv) != 3:
@@ -36,20 +75,47 @@ def main() -> int:
 
     page_id = os.getenv("FACEBOOK_PAGE_ID", "").strip()
     token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "").strip()
-    if not page_id or not token:
+    expected_page_id = os.getenv("FACEBOOK_EXPECTED_PAGE_ID", "").strip()
+    if not page_id or not token or not expected_page_id:
         raise SystemExit("FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must be configured.")
     version = os.getenv("FACEBOOK_GRAPH_VERSION", "v26.0")
-    url = f"https://graph.facebook.com/{version}/{page_id}/videos"
     import requests
 
+    page_name = verify_page_identity(requests, version, page_id, token, expected_page_id)
+    print(f"Verified Facebook destination Page: {page_name} ({page_id})")
+
+    url = f"https://graph.facebook.com/{version}/{page_id}/videos"
     with video.open("rb") as fh:
-        response = requests.post(url, data={"access_token":token,"title":meta["title"],"description":meta["description"]}, files={"source":(video.name,fh,"video/mp4")}, timeout=300)
-    response.raise_for_status()
-    data = response.json()
-    video_id = data.get("id")
+        try:
+            response = requests.post(
+                url,
+                data={
+                    "access_token": token,
+                    "title": meta["title"],
+                    "description": meta["description"],
+                },
+                files={"source": (video.name, fh, "video/mp4")},
+                timeout=300,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            raise SystemExit(
+                "Facebook upload request failed or returned an unreadable response. "
+                "Check the Page before retrying to avoid duplicate uploads."
+            ) from None
+
+    video_id = data.get("id") if isinstance(data, dict) else None
     if not video_id:
-        raise SystemExit("Facebook response did not include a video ID; inspect the Page before retrying.")
-    print(json.dumps({"destination":"facebook","status":"published","video_id":video_id}, ensure_ascii=False))
+        raise SystemExit(
+            "Facebook response did not include a video ID; inspect the Page before retrying."
+        )
+    print(json.dumps(
+        {"destination": "facebook", "status": "published", "video_id": video_id, "page_id": page_id},
+        ensure_ascii=False,
+    ))
     return 0
 
-if __name__ == "__main__": raise SystemExit(main())
+
+if __name__ == "__main__":
+    raise SystemExit(main())
