@@ -8,7 +8,7 @@ Bose2 contains reusable production code, content catalogs, media assembly, valid
 ## Security boundary
 - Do not add API keys, OAuth client secrets, refresh tokens, access tokens, passwords, cookies, or private account data to this repository.
 - The optional Gemini enhancement is not required for the free MVP. The production workflow now runs without injecting GEMINI_API_KEY and falls back to the local deterministic script.
-- The current manual YouTube and Facebook workflows still reference GitHub Actions secrets in this repository. They are transitional and are scheduled to move to the private Bose control plane. Do not add or rotate publishing credentials here as part of the migration.
+- The public YouTube and Facebook upload jobs are now explicitly disabled on this repair branch while publishing is moved to the private Bose control plane. Do not add or rotate publishing credentials in Bose2.
 - Automatic publishing remains disabled. The existing automatic-publishing.yml job is intentionally guarded by if: false.
 
 ## First repair batch
