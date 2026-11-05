@@ -34,18 +34,16 @@ def verify_target_channel(youtube) -> str:
 
     mine_response = youtube.channels().list(part="id,snippet", mine=True, maxResults=50).execute()
     mine = mine_response.get("items", [])
-    # Do not guess which of multiple channels an upload token will publish to.
-    if len(mine) != 1:
+    authorized_ids = {
+        item.get("id") for item in mine
+        if isinstance(item, dict) and item.get("id")
+    }
+    # Multiple channels may be authorized on one Google identity. Never guess:
+    # proceed only when the exact configured target is among the authorized channels.
+    if target_id not in authorized_ids:
         raise SystemExit(
-            "OAuth identity returned zero or multiple YouTube channels. "
-            "Re-authorize using the intended channel, then retry; refusing upload."
-        )
-    authorized_id = mine[0].get("id")
-    if authorized_id != target_id:
-        authorized_title = mine[0].get("snippet", {}).get("title", "(unknown)")
-        raise SystemExit(
-            f"Wrong YouTube channel connected: '{authorized_title}'. "
-            f"Expected @{expected_handle} ({target_id}); refusing upload."
+            f"Target @{expected_handle} is not among the YouTube channels "
+            "authorized by this OAuth token; refusing upload."
         )
     print(json.dumps({
         "destination": "youtube",
@@ -100,6 +98,7 @@ def main() -> int:
 
     # Import network client dependencies only after every local safety check passes.
     from google.oauth2.credentials import Credentials
+    from google.auth.exceptions import RefreshError
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
@@ -115,7 +114,16 @@ def main() -> int:
         scopes=SCOPES,
     )
     youtube = build("youtube", "v3", credentials=creds)
-    target_channel_id = verify_target_channel(youtube)
+    try:
+        target_channel_id = verify_target_channel(youtube)
+    except RefreshError as exc:
+        error_code = "unauthorized_client" if "unauthorized_client" in str(exc) else "token_refresh_failed"
+        raise SystemExit(
+            f"YouTube OAuth refresh failed ({error_code}). Confirm that the client ID and "
+            "client secret belong to the same OAuth client that issued this refresh token. "
+            "If they match, re-authorize the intended channel and replace the stored refresh "
+            "token. No video was uploaded."
+        ) from None
 
     # This project is configured for private-only uploads. Fail closed even if a workflow
     # accidentally passes "public" or "unlisted".
