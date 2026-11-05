@@ -23,7 +23,8 @@ permissions:
 
 jobs:
   publish-one:
-    if: ${{ inputs.confirm_publication == true }}
+    # Publishing is being moved to the private Bose control plane. Keep this public path fail-closed.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

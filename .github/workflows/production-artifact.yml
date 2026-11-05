@@ -24,8 +24,8 @@ jobs:
       - name: Run regression tests
         run: python -m pytest -q
       - name: Generate production queue
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # Gemini refinement is optional and intentionally not credentialed in the public factory.
+        # The deterministic local script remains the zero-cost default.
         run: |
           python - <<'PY'
           import json
