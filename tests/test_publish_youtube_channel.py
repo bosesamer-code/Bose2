@@ -1,4 +1,4 @@
-from src.publish_youtube import verify_target_channel
+from scripts.publish_youtube import verify_target_channel
 
 
 class _Request:
